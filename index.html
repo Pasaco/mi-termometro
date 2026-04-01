@@ -110,7 +110,9 @@
     </div>
 
 
-    <script>
+
+    
+<script>
         const tg = window.Telegram.WebApp;
         tg.expand();
 
@@ -122,31 +124,28 @@
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
 
-        // --- 2. CONFIGURACIÓN DE LA GRÁFICA (Chart.js) ---
+        // --- 2. CONFIGURACIÓN DE LA GRÁFICA ---
         const ctx = document.getElementById('graficaDual').getContext('2d');
         
-        const gT = ctx.createLinearGradient(0, 0, 0, 300);
-        gT.addColorStop(0, 'rgba(255, 107, 107, 0.4)'); gT.addColorStop(1, 'rgba(255, 107, 107, 0)');
-        const gH = ctx.createLinearGradient(0, 0, 0, 300);
-        gH.addColorStop(0, 'rgba(26, 188, 156, 0.4)'); gH.addColorStop(1, 'rgba(26, 188, 156, 0)');
-
         const chart = new Chart(ctx, {
             type: 'line',
             data: { labels: [], datasets: [
-                { label: 'T', yAxisID: 'yT', borderColor: '#ff6b6b', backgroundColor: gT, data: [], borderWidth: 3, pointRadius: 0, fill: true, tension: 0.4 },
-                { label: 'H', yAxisID: 'yH', borderColor: '#1abc9c', backgroundColor: gH, data: [], borderWidth: 3, pointRadius: 0, fill: true, tension: 0.4 }
+                { label: 'T', yAxisID: 'yT', borderColor: '#ff6b6b', data: [], borderWidth: 3, pointRadius: 0, fill: true, tension: 0.4, backgroundColor: 'rgba(255, 107, 107, 0.1)' },
+                { label: 'H', yAxisID: 'yH', borderColor: '#1abc9c', data: [], borderWidth: 3, pointRadius: 0, fill: true, tension: 0.4, backgroundColor: 'rgba(26, 188, 156, 0.1)' }
             ]},
             options: {
                 responsive: true,
-                maintainAspectRatio: false, // Ahora sí obedece al contenedor de 300px
-                interaction: { mode: 'index', intersect: false },
+                maintainAspectRatio: false,
                 scales: {
                     x: { 
-                        grid: { 
-                            color: (c) => c.tick && c.tick.label ? 'rgba(255,255,255,0.1)' : 'transparent', 
-                            drawBorder: false 
-                        },
-                        ticks: { color: '#555', font: { size: 9 }, maxRotation: 0, autoSkip: false }
+                        display: true,
+                        grid: { color: 'rgba(255,255,255,0.05)', drawBorder: false },
+                        ticks: { 
+                            color: '#666', 
+                            font: { size: 10 },
+                            maxTicksLimit: 6, // FUERZA a repartir solo unas pocas etiquetas de hora
+                            autoSkip: true    // Reparte el espacio disponible equitativamente
+                        }
                     },
                     yT: { position: 'left', grid: { color: '#222' }, ticks: { color: '#ff6b6b' } },
                     yH: { position: 'right', grid: { display: false }, ticks: { color: '#1abc9c' } }
@@ -155,68 +154,48 @@
             }
         });
 
-        // --- 3. MONITOR EN TIEMPO REAL (DATOS, ERROR Y HEARTBEAT) ---
-        db.ref('sensor').on('value', snapshot => {
-            const data = snapshot.val();
-            if (!data) return;
-
-            const appData = document.getElementById('app-data');
-            const errorCard = document.getElementById('error-card');
-            const errorText = document.getElementById('error-text');
-
+        // --- 3. MONITOR EN TIEMPO REAL (DATOS Y ERRORES) ---
+        db.ref('sensor').on('value', s => {
+            const d = s.val();
+            if (!d) return;
+            const appData = document.getElementById('app-data'), errorCard = document.getElementById('error-card'), errorText = document.getElementById('error-text');
             const ahora = Math.floor(Date.now() / 1000);
-            const segundosTranscurridos = ahora - data.latido;
-
-            // Detección de Placa Apagada (más de 75 seg sin latido)
-            if (segundosTranscurridos > 75) {
-                appData.style.display = 'none';
-                errorCard.style.display = 'block';
-                errorText.innerText = "SISTEMA OFF: Placa desconectada";
-            } 
-            // Detección de Error de Sensor (-999)
-            else if (data.temperatura <= -900) {
-                appData.style.display = 'none';
-                errorCard.style.display = 'block';
-                errorText.innerText = "Error de conexión del sensor";
-            } 
-            // Todo correcto
-            else {
-                appData.style.display = 'flex';
-                errorCard.style.display = 'none';
-                document.getElementById('temp').innerText = data.temperatura.toFixed(1) + "°C";
-                document.getElementById('hum').innerText = data.humedad.toFixed(0) + "%";
+            
+            if (ahora - d.latido > 75) {
+                appData.style.display = 'none'; errorCard.style.display = 'block'; errorText.innerText = "PLACA FUERA DE LÍNEA";
+            } else if (d.temperatura <= -900) {
+                appData.style.display = 'none'; errorCard.style.display = 'block'; errorText.innerText = "ERROR DE SENSOR";
+            } else {
+                appData.style.display = 'flex'; errorCard.style.display = 'none';
+                document.getElementById('temp').innerText = d.temperatura.toFixed(1) + "°C";
+                document.getElementById('hum').innerText = d.humedad.toFixed(0) + "%";
             }
         });
 
-        // --- 4. HISTORIAL CON EJE X PROPORCIONAL ---
+        // --- 4. HISTORIAL (EL TRUCO DEL REPARTO EQUITATIVO) ---
         db.ref('historial').limitToLast(288).on('value', snapshot => {
-            const historyData = snapshot.val();
-            if (!historyData) return;
+            const data = snapshot.val();
+            if (!data) return;
 
-            const labels = [], tData = [], hData = [];
-            let lastHourLabel = -1;
-
-            // Iteramos sobre todos los puntos para mantener la línea de tiempo
-            Object.values(historyData).forEach(punto => {
-                tData.push(punto.t);
-                hData.push(punto.h);
+            const labels = [], temps = [], hums = [];
+            
+            // Convertimos a array y recorremos
+            Object.values(data).forEach(p => {
+                temps.push(p.t);
+                hums.push(p.h);
                 
-                const d = new Date(punto.ts);
-                const hora = d.getHours();
-
-                // Solo ponemos el texto de la hora (01:00, etc.) cuando cambia la hora
-                // Esto crea una cuadrícula limpia y proporcional
-                if (hora !== lastHourLabel) {
-                    labels.push(hora.toString().padStart(2, '0') + ":00");
-                    lastHourLabel = hora;
-                } else {
-                    labels.push(""); 
-                }
+                // Creamos la etiqueta de hora para CADA punto
+                const d = new Date(p.ts);
+                const horaStr = d.getHours().toString().padStart(2, '0') + ":" + d.getMinutes().toString().padStart(2, '0');
+                labels.push(horaStr);
             });
 
             chart.data.labels = labels;
-            chart.data.datasets[0].data = tData;
-            chart.data.datasets[1].data = hData;
+            chart.data.datasets[0].data = temps;
+            chart.data.datasets[1].data = hums;
+            
+            // Chart.js se encarga de repartir estas etiquetas 
+            // gracias a 'maxTicksLimit' y 'autoSkip'
             chart.update('none');
         });
     </script>
