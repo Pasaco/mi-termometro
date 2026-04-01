@@ -3,81 +3,33 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>Termómetro Pro con Historial Completo</title>
+    <title>Termómetro Pro - Dual Chart</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        body { 
-            font-family: sans-serif; 
-            background: #1c1c1c; 
-            color: white; 
-            margin: 0; 
-            padding: 0;
-            overflow-x: hidden;
-        }
-
-        /* Sección Principal (Datos Actuales) */
-        .hero-section {
-            height: 100vh;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            position: relative;
-        }
-
+        body { font-family: sans-serif; background: #1c1c1c; color: white; margin: 0; padding: 0; overflow-x: hidden; }
+        
+        .hero-section { height: 100vh; display: flex; flex-direction: column; justify-content: center; align-items: center; position: relative; }
+        
         .card { 
-            background: #2d2d2d; 
-            margin: 10px; 
-            padding: 20px; 
-            border-radius: 18px; 
-            box-shadow: 0 5px 15px rgba(0,0,0,0.5); 
-            width: 85%;
+            background: #2d2d2d; margin: 10px; padding: 20px; border-radius: 20px; 
+            box-shadow: 0 5px 15px rgba(0,0,0,0.5); width: 85%;
         }
 
         .flex { display: flex; justify-content: space-around; width: 100%; }
-        .value { font-size: 2em; font-weight: bold; }
-        .temp-color { color: #0088cc; } /* Azul */
-        .hum-color { color: #1abc9c; }  /* Teal/Verde Agua (NUEVO) */
+        .value { font-size: 2.2em; font-weight: bold; }
+        .temp-color { color: #ff6b6b; } /* Rojo suave */
+        .hum-color { color: #1abc9c; }  /* Verde agua */
         .label { color: #888; font-size: 0.85em; text-transform: uppercase; letter-spacing: 1px; }
 
-        /* Indicador de Deslizar */
-        .scroll-hint {
-            position: absolute;
-            bottom: 20px;
-            color: #555;
-            font-size: 0.8em;
-            animation: bounce 2s infinite;
-        }
+        .scroll-hint { position: absolute; bottom: 20px; color: #555; font-size: 0.8em; animation: bounce 2s infinite; }
+        @keyframes bounce { 0%, 20%, 50%, 80%, 100% {transform: translateY(0);} 40% {transform: translateY(-10px);} 60% {transform: translateY(-5px);} }
 
-        @keyframes bounce {
-            0%, 20%, 50%, 80%, 100% {transform: translateY(0);}
-            40% {transform: translateY(-10px);}
-            60% {transform: translateY(-5px);}
-        }
-
-        /* Sección de Gráficas (Scrollable) */
-        .chart-section {
-            padding: 20px 10px 60px 10px;
-            background: #151515;
-            min-height: 800px; /* Suficiente espacio para dos gráficas */
-        }
-
-        /* Estilo para los títulos de las gráficas */
-        .chart-title {
-            font-size: 0.85em;
-            color: #888;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            margin-bottom: 10px;
-            text-align: left;
-            padding-left: 5px;
-        }
-
+        .chart-section { padding: 20px 10px 50px 10px; background: #151515; min-height: 450px; }
         #error-card { display: none; border: 2px solid #ff4444; width: 80%; }
-        canvas { width: 100% !important; height: auto !important; margin-bottom: 15px; }
+        canvas { width: 100% !important; height: auto !important; }
     </style>
 </head>
 <body>
@@ -95,27 +47,18 @@
                         <div id="hum" class="value hum-color">-- %</div>
                     </div>
                 </div>
-                <div class="scroll-hint">🔼 Desliza para ver historial 🔼</div>
+                <div class="scroll-hint">🔼 Desliza para historial 🔼</div>
             </div>
-
             <div id="error-card" class="card">
                 <div style="color:#ff4444; font-weight: bold;">⚠️ SENSOR DESCONECTADO</div>
-                <div style="font-size: 0.8em; color: #888; margin-top: 10px;">Comprueba los cables del DHT22</div>
             </div>
         </div>
 
         <div class="chart-section">
-            
             <div class="card">
-                <div class="chart-title">Historial Temp 24h</div>
-                <canvas id="graficaTemp"></canvas>
+                <div class="label" style="margin-bottom:15px;">Historial Combinado (24h)</div>
+                <canvas id="graficaDual"></canvas>
             </div>
-
-            <div class="card">
-                <div class="chart-title">Historial Hum 24h</div>
-                <canvas id="graficaHum"></canvas>
-            </div>
-
         </div>
     </div>
 
@@ -123,119 +66,99 @@
         const tg = window.Telegram.WebApp;
         tg.expand();
 
-        // CONFIGURACIÓN FIREBASE (RECUERDA PONER TUS DATOS AQUÍ)
         const firebaseConfig = {
-            apiKey: "AIzaSyAz2wvO_ryzMLmBp2p7UULY6Q8mQVh_o2Y",
+            apiKey: "AIzaSyAz2wvO_ryzMLmBp2p7UULY6Q8mQVh_o2Y", 
             databaseURL: "https://temperatura-casa-fe2e1-default-rtdb.europe-west1.firebasedatabase.app"
         };
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
 
-        // Estilos compartidos para las escalas de las gráficas
-        const chartScales = {
-            x: { display: false },
-            y: { 
-                grid: { color: '#333' },
-                ticks: { color: '#888', font: { size: 10 } }
-            }
-        };
-
-        // CONFIGURACIÓN DE LAS GRÁFICAS
-
-        // 1. Gráfica Temperatura (Azul)
-        const ctxTemp = document.getElementById('graficaTemp').getContext('2d');
-        const chartTemp = new Chart(ctxTemp, {
+        // CONFIGURACIÓN DE LA GRÁFICA DUAL
+        const ctx = document.getElementById('graficaDual').getContext('2d');
+        const chart = new Chart(ctx, {
             type: 'line',
             data: {
                 labels: [],
-                datasets: [{
-                    label: 'Temp °C',
-                    borderColor: '#0088cc', // Azul Telegram
-                    backgroundColor: 'rgba(0, 136, 204, 0.1)',
-                    data: [],
-                    borderWidth: 3,
-                    pointRadius: 0,
-                    fill: true,
-                    tension: 0.4
-                }]
+                datasets: [
+                    {
+                        label: 'Temp (°C)',
+                        yAxisID: 'yTemp',
+                        borderColor: '#ff6b6b',
+                        backgroundColor: 'rgba(255, 107, 107, 0.1)',
+                        data: [],
+                        borderWidth: 3,
+                        pointRadius: 0,
+                        fill: true,
+                        tension: 0.4
+                    },
+                    {
+                        label: 'Hum (%)',
+                        yAxisID: 'yHum',
+                        borderColor: '#1abc9c',
+                        backgroundColor: 'rgba(26, 188, 156, 0.1)',
+                        data: [],
+                        borderWidth: 3,
+                        pointRadius: 0,
+                        fill: true,
+                        tension: 0.4
+                    }
+                ]
             },
             options: {
                 responsive: true,
-                maintainAspectRatio: true,
-                scales: chartScales,
-                plugins: { legend: { display: false } }
+                interaction: { mode: 'index', intersect: false },
+                scales: {
+                    x: { display: false },
+                    yTemp: { // Eje izquierdo para Temperatura
+                        type: 'linear',
+                        display: true,
+                        position: 'left',
+                        grid: { color: '#333' },
+                        ticks: { color: '#ff6b6b' }
+                    },
+                    yHum: { // Eje derecho para Humedad
+                        type: 'linear',
+                        display: true,
+                        position: 'right',
+                        grid: { drawOnChartArea: false }, // No mezclar líneas de rejilla
+                        ticks: { color: '#1abc9c' }
+                    }
+                },
+                plugins: { 
+                    legend: { labels: { color: '#888', boxWidth: 12 } } 
+                }
             }
         });
 
-        // 2. Gráfica Humedad (Teal/Verde Agua - NUEVA)
-        const ctxHum = document.getElementById('graficaHum').getContext('2d');
-        const chartHum = new Chart(ctxHum, {
-            type: 'line',
-            data: {
-                labels: [],
-                datasets: [{
-                    label: 'Hum %',
-                    borderColor: '#1abc9c', // Teal/Verde Agua (Contraste)
-                    backgroundColor: 'rgba(26, 188, 156, 0.1)',
-                    data: [],
-                    borderWidth: 3,
-                    pointRadius: 0,
-                    fill: true,
-                    tension: 0.4
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: true,
-                scales: chartScales,
-                plugins: { legend: { display: false } }
-            }
-        });
-
-        // LÓGICA DE DATOS
-
-        // 1. Datos en tiempo real ( números grandes)
+        // Leer tiempo real
         db.ref('sensor').on('value', (snapshot) => {
             const data = snapshot.val();
-            const appData = document.getElementById('app-data');
-            const errorCard = document.getElementById('error-card');
-
             if (!data || data.temperatura === -999) {
-                appData.style.display = 'none';
-                errorCard.style.display = 'block';
-                tg.MainButton.hide(); // Ocultamos botón si hay error
+                document.getElementById('app-data').style.display = 'none';
+                document.getElementById('error-card').style.display = 'block';
             } else {
-                appData.style.display = 'flex';
-                errorCard.style.display = 'none';
+                document.getElementById('app-data').style.display = 'flex';
+                document.getElementById('error-card').style.display = 'none';
                 document.getElementById('temp').innerText = data.temperatura + " °C";
                 document.getElementById('hum').innerText = data.humedad + " %";
             }
         });
 
-        // 2. Historial SIMULTÁNEO (288 puntos = 24h)
+        // Leer Historial (288 puntos)
         db.ref('historial').limitToLast(288).on('value', (snapshot) => {
             const historyData = snapshot.val();
-            const labels = [];
-            const tempArray = [];
-            const humArray = [];
+            const labels = [], tData = [], hData = [];
 
-            // Procesamos los datos una sola vez
             for (let id in historyData) {
-                tempArray.push(historyData[id].t);
-                humArray.push(historyData[id].h);
-                // Convertimos el timestamp una sola vez para ambas x-axes
-                labels.push(new Date(historyData[id].ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+                tData.push(historyData[id].t);
+                hData.push(historyData[id].h);
+                labels.push(new Date(historyData[id].ts).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}));
             }
 
-            // Actualizar gráfica de Temperatura
-            chartTemp.data.labels = labels;
-            chartTemp.data.datasets[0].data = tempArray;
-            chartTemp.update();
-
-            // Actualizar gráfica de Humedad (Sincronizada)
-            chartHum.data.labels = labels;
-            chartHum.data.datasets[0].data = humArray;
-            chartHum.update();
+            chart.data.labels = labels;
+            chart.data.datasets[0].data = tData;
+            chart.data.datasets[1].data = hData;
+            chart.update();
         });
     </script>
 </body>
