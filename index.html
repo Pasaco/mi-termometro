@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>Termómetro con Historial</title>
+    <title>Termómetro Pro con Historial Completo</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
@@ -18,7 +18,7 @@
             overflow-x: hidden;
         }
 
-        /* Contenedor de pantalla completa para los datos actuales */
+        /* Sección Principal (Datos Actuales) */
         .hero-section {
             height: 100vh;
             display: flex;
@@ -31,17 +31,19 @@
         .card { 
             background: #2d2d2d; 
             margin: 10px; 
-            padding: 25px; 
-            border-radius: 20px; 
+            padding: 20px; 
+            border-radius: 18px; 
             box-shadow: 0 5px 15px rgba(0,0,0,0.5); 
             width: 85%;
         }
 
         .flex { display: flex; justify-content: space-around; width: 100%; }
-        .value { font-size: 2.2em; font-weight: bold; color: #0088cc; }
-        .label { color: #888; font-size: 0.9em; text-transform: uppercase; letter-spacing: 1px; }
+        .value { font-size: 2em; font-weight: bold; }
+        .temp-color { color: #0088cc; } /* Azul */
+        .hum-color { color: #1abc9c; }  /* Teal/Verde Agua (NUEVO) */
+        .label { color: #888; font-size: 0.85em; text-transform: uppercase; letter-spacing: 1px; }
 
-        /* Indicador de "Deslizar" */
+        /* Indicador de Deslizar */
         .scroll-hint {
             position: absolute;
             bottom: 20px;
@@ -56,16 +58,26 @@
             60% {transform: translateY(-5px);}
         }
 
-        /* Sección de la gráfica */
+        /* Sección de Gráficas (Scrollable) */
         .chart-section {
-            padding: 20px 10px 50px 10px;
+            padding: 20px 10px 60px 10px;
             background: #151515;
-            min-height: 400px;
+            min-height: 800px; /* Suficiente espacio para dos gráficas */
+        }
+
+        /* Estilo para los títulos de las gráficas */
+        .chart-title {
+            font-size: 0.85em;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 10px;
+            text-align: left;
+            padding-left: 5px;
         }
 
         #error-card { display: none; border: 2px solid #ff4444; width: 80%; }
-        
-        canvas { width: 100% !important; height: auto !important; }
+        canvas { width: 100% !important; height: auto !important; margin-bottom: 15px; }
     </style>
 </head>
 <body>
@@ -76,14 +88,14 @@
                 <div class="card flex">
                     <div>
                         <div class="label">Temp</div>
-                        <div id="temp" class="value">-- °C</div>
+                        <div id="temp" class="value temp-color">-- °C</div>
                     </div>
                     <div>
                         <div class="label">Hum</div>
-                        <div id="hum" class="value">-- %</div>
+                        <div id="hum" class="value hum-color">-- %</div>
                     </div>
                 </div>
-                <div class="scroll-hint">🔼 Desliza para ver el historial 🔼</div>
+                <div class="scroll-hint">🔼 Desliza para ver historial 🔼</div>
             </div>
 
             <div id="error-card" class="card">
@@ -93,10 +105,17 @@
         </div>
 
         <div class="chart-section">
+            
             <div class="card">
-                <div class="label" style="margin-bottom: 15px;">Historial 24h</div>
-                <canvas id="grafica"></canvas>
+                <div class="chart-title">Historial Temp 24h</div>
+                <canvas id="graficaTemp"></canvas>
             </div>
+
+            <div class="card">
+                <div class="chart-title">Historial Hum 24h</div>
+                <canvas id="graficaHum"></canvas>
+            </div>
+
         </div>
     </div>
 
@@ -104,6 +123,7 @@
         const tg = window.Telegram.WebApp;
         tg.expand();
 
+        // CONFIGURACIÓN FIREBASE (RECUERDA PONER TUS DATOS AQUÍ)
         const firebaseConfig = {
             apiKey: "AIzaSyAz2wvO_ryzMLmBp2p7UULY6Q8mQVh_o2Y",
             databaseURL: "https://temperatura-casa-fe2e1-default-rtdb.europe-west1.firebasedatabase.app"
@@ -111,38 +131,70 @@
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
 
-        // CONFIGURACIÓN DE LA GRÁFICA
-        const ctx = document.getElementById('grafica').getContext('2d');
-        const chart = new Chart(ctx, {
+        // Estilos compartidos para las escalas de las gráficas
+        const chartScales = {
+            x: { display: false },
+            y: { 
+                grid: { color: '#333' },
+                ticks: { color: '#888', font: { size: 10 } }
+            }
+        };
+
+        // CONFIGURACIÓN DE LAS GRÁFICAS
+
+        // 1. Gráfica Temperatura (Azul)
+        const ctxTemp = document.getElementById('graficaTemp').getContext('2d');
+        const chartTemp = new Chart(ctxTemp, {
             type: 'line',
             data: {
                 labels: [],
                 datasets: [{
-                    label: 'Temperatura °C',
-                    borderColor: '#0088cc',
+                    label: 'Temp °C',
+                    borderColor: '#0088cc', // Azul Telegram
                     backgroundColor: 'rgba(0, 136, 204, 0.1)',
                     data: [],
                     borderWidth: 3,
                     pointRadius: 0,
                     fill: true,
-                    tension: 0.4 // Curva suave
+                    tension: 0.4
                 }]
             },
             options: {
                 responsive: true,
                 maintainAspectRatio: true,
-                scales: {
-                    x: { display: false },
-                    y: { 
-                        grid: { color: '#333' },
-                        ticks: { color: '#888' }
-                    }
-                },
+                scales: chartScales,
                 plugins: { legend: { display: false } }
             }
         });
 
-        // 1. Datos en tiempo real
+        // 2. Gráfica Humedad (Teal/Verde Agua - NUEVA)
+        const ctxHum = document.getElementById('graficaHum').getContext('2d');
+        const chartHum = new Chart(ctxHum, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Hum %',
+                    borderColor: '#1abc9c', // Teal/Verde Agua (Contraste)
+                    backgroundColor: 'rgba(26, 188, 156, 0.1)',
+                    data: [],
+                    borderWidth: 3,
+                    pointRadius: 0,
+                    fill: true,
+                    tension: 0.4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                scales: chartScales,
+                plugins: { legend: { display: false } }
+            }
+        });
+
+        // LÓGICA DE DATOS
+
+        // 1. Datos en tiempo real ( números grandes)
         db.ref('sensor').on('value', (snapshot) => {
             const data = snapshot.val();
             const appData = document.getElementById('app-data');
@@ -151,6 +203,7 @@
             if (!data || data.temperatura === -999) {
                 appData.style.display = 'none';
                 errorCard.style.display = 'block';
+                tg.MainButton.hide(); // Ocultamos botón si hay error
             } else {
                 appData.style.display = 'flex';
                 errorCard.style.display = 'none';
@@ -159,20 +212,30 @@
             }
         });
 
-        // 2. Historial (288 puntos = 24h)
+        // 2. Historial SIMULTÁNEO (288 puntos = 24h)
         db.ref('historial').limitToLast(288).on('value', (snapshot) => {
             const historyData = snapshot.val();
-            const temps = [];
             const labels = [];
+            const tempArray = [];
+            const humArray = [];
 
+            // Procesamos los datos una sola vez
             for (let id in historyData) {
-                temps.push(historyData[id].t);
-                labels.push(new Date(historyData[id].ts).toLocaleTimeString());
+                tempArray.push(historyData[id].t);
+                humArray.push(historyData[id].h);
+                // Convertimos el timestamp una sola vez para ambas x-axes
+                labels.push(new Date(historyData[id].ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
             }
 
-            chart.data.labels = labels;
-            chart.data.datasets[0].data = temps;
-            chart.update();
+            // Actualizar gráfica de Temperatura
+            chartTemp.data.labels = labels;
+            chartTemp.data.datasets[0].data = tempArray;
+            chartTemp.update();
+
+            // Actualizar gráfica de Humedad (Sincronizada)
+            chartHum.data.labels = labels;
+            chartHum.data.datasets[0].data = humArray;
+            chartHum.update();
         });
     </script>
 </body>
