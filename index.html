@@ -53,8 +53,24 @@
         // Leer datos en tiempo real
         db.ref('sensor').on('value', (snapshot) => {
             const data = snapshot.val();
-            document.getElementById('temp').innerText = data.temperatura + " °C";
-            document.getElementById('hum').innerText = data.humedad + " %";
+            const tempEl = document.getElementById('temp');
+            const humEl = document.getElementById('hum');
+
+            // Comprobar si hay código de error
+            if (data.temperatura === -999 || data.humedad === -999) {
+                tempEl.innerText = "⚠️ ERROR";
+                tempEl.style.color = "#ff4444"; // Color rojo
+                
+                humEl.innerText = "DESCONECTADO";
+                humEl.style.color = "#ff4444"; // Color rojo
+            } else {
+                // Si todo está bien, mostramos los datos normales en azul
+                tempEl.innerText = data.temperatura + " °C";
+                tempEl.style.color = "#0088cc"; 
+                
+                humEl.innerText = data.humedad + " %";
+                humEl.style.color = "#0088cc"; 
+            }
         });
     </script>
 </body>
