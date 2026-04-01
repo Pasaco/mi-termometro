@@ -93,7 +93,7 @@
         </div>
 
         <div id="error-card">
-            <div style="color: var(--red); font-weight: bold; margin-bottom: 5px;">⚠️ ESTADO DEL SISTEMA</div>
+            <div style="color: var(--red); font-weight: bold; margin-bottom: 5px;">⚠️ ADVERTENCIA ⚠️</div>
             <small id="error-text" style="color: #fff; opacity: 0.8;"></small>
         </div>
 
@@ -177,7 +177,7 @@
             else if (data.temperatura <= -900) {
                 appData.style.display = 'none';
                 errorCard.style.display = 'block';
-                errorText.innerText = "ERROR TÉCNICO: Sensor fallando";
+                errorText.innerText = "Error de conexión del sensor";
             } 
             // Todo correcto
             else {
