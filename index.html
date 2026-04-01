@@ -3,98 +3,58 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>Termómetro Pro - Centered Design</title>
+    <title>Termómetro Pro - Cronología 24h</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #121212; color: white; margin: 0; padding: 0; overflow-x: hidden; }
+        body { font-family: -apple-system, system-ui, sans-serif; background: #121212; color: white; margin: 0; padding: 0; overflow-x: hidden; }
         
-        /* Contenedor principal centrado */
-        .hero-section { 
-            height: 100vh; 
-            display: flex; 
-            flex-direction: column; 
-            justify-content: center; /* Centrado vertical */
-            align-items: center; 
-            position: relative;
-        }
-
-        /* Contenedor de las dos tarjetas de arriba */
-        .realtime-container {
-            display: flex;
-            gap: 15px;
-            width: 90%;
-            max-width: 400px;
-            justify-content: center;
-        }
-
+        .hero-section { height: 100vh; display: flex; flex-direction: column; justify-content: center; align-items: center; position: relative; }
+        
+        .realtime-container { display: flex; gap: 12px; width: 92%; max-width: 400px; justify-content: center; }
+        
         .card { 
-            background: #1e1e1e; 
-            border-radius: 25px; 
-            box-shadow: 0 10px 30px rgba(0,0,0,0.5); 
-            border: 1px solid #333;
-            padding: 20px;
-            text-align: center;
+            background: #1e1e1e; border-radius: 25px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); 
+            border: 1px solid #333; padding: 20px; text-align: center; 
         }
 
-        /* Tarjetas pequeñas de arriba */
-        .realtime-card {
-            flex: 1; /* Hace que ambas midan lo mismo */
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            height: 120px;
-        }
+        .realtime-card { flex: 1; height: 110px; display: flex; flex-direction: column; justify-content: center; }
+        .chart-card { width: 92%; max-width: 420px; margin-top: 20px; padding: 15px; box-sizing: border-box; }
 
-        /* Tarjeta de la gráfica (abajo) */
-        .chart-card {
-            width: 90%;
-            max-width: 400px;
-            margin-top: 20px;
-        }
+        .value { font-size: 1.8em; font-weight: bold; margin-top: 5px; }
+        .temp-color { color: #ff5e62; }
+        .hum-color { color: #1abc9c; }
+        .label { color: #666; font-size: 0.7em; text-transform: uppercase; letter-spacing: 2px; }
 
-        .value { font-size: 2em; font-weight: bold; margin-top: 5px; }
-        .temp-color { color: #ff5e62; text-shadow: 0 0 15px rgba(255, 94, 98, 0.3); }
-        .hum-color { color: #1abc9c; text-shadow: 0 0 15px rgba(26, 188, 156, 0.3); }
-        .label { color: #888; font-size: 0.75em; text-transform: uppercase; letter-spacing: 1.5px; }
-
-        .scroll-hint { position: absolute; bottom: 30px; color: #444; font-size: 0.75em; animation: bounce 2s infinite; letter-spacing: 1px; }
+        .scroll-hint { position: absolute; bottom: 30px; color: #333; font-size: 0.7em; animation: bounce 2s infinite; font-weight: bold; }
         @keyframes bounce { 0%, 20%, 50%, 80%, 100% {transform: translateY(0);} 40% {transform: translateY(-10px);} 60% {transform: translateY(-5px);} }
 
-        .chart-section { padding: 40px 10px; background: #0a0a0a; display: flex; flex-direction: column; align-items: center; }
+        .chart-section { padding: 40px 0; background: #0a0a0a; display: flex; flex-direction: column; align-items: center; }
         canvas { width: 100% !important; height: auto !important; }
-        
-        #error-card { border: 2px solid #ff4444; width: 80%; display: none; }
     </style>
 </head>
 <body>
 
     <div id="main-content">
-        <div class="hero-section" id="hero">
+        <div class="hero-section">
             <div id="app-data" class="realtime-container">
                 <div class="card realtime-card" style="border-bottom: 3px solid #ff5e62;">
-                    <div class="label">TEMP</div>
-                    <div id="temp" class="value temp-color">-- °C</div>
+                    <div class="label">Temperatura</div>
+                    <div id="temp" class="value temp-color">--°C</div>
                 </div>
-                
                 <div class="card realtime-card" style="border-bottom: 3px solid #1abc9c;">
-                    <div class="label">HUM</div>
-                    <div id="hum" class="value hum-color">-- %</div>
+                    <div class="label">Humedad</div>
+                    <div id="hum" class="value hum-color">--%</div>
                 </div>
             </div>
-
-            <div id="error-card" class="card">
-                <div style="color:#ff4444; font-weight: bold;">⚠️ SENSOR ERROR</div>
-            </div>
-
-            <div class="scroll-hint">🔼 DESLIZA PARA HISTORIAL</div>
+            <div class="scroll-hint">🔼 HISTORIAL POR HORAS</div>
         </div>
 
         <div class="chart-section">
             <div class="card chart-card">
-                <div class="label" style="margin-bottom:15px; text-align:center;">Últimas 24 Horas</div>
+                <div class="label" style="margin-bottom:20px; text-align:center;">Evolución 24h</div>
                 <canvas id="graficaDual"></canvas>
             </div>
         </div>
@@ -104,7 +64,6 @@
         const tg = window.Telegram.WebApp;
         tg.expand();
 
-        // TU CONFIGURACIÓN DE FIREBASE (Asegúrate de pegar tus datos reales)
         const firebaseConfig = {
             apiKey: "AIzaSyAz2wvO_ryzMLmBp2p7UULY6Q8mQVh_o2Y", 
             databaseURL: "https://temperatura-casa-fe2e1-default-rtdb.europe-west1.firebasedatabase.app"
@@ -114,11 +73,11 @@
 
         const ctx = document.getElementById('graficaDual').getContext('2d');
 
-        // Gradientes dinámicos
+        // Gradientes para el efecto de intensidad
         const gTemp = ctx.createLinearGradient(0, 0, 0, 300);
-        gTemp.addColorStop(0, '#ff4d4d'); gTemp.addColorStop(1, 'rgba(255, 77, 77, 0)');
+        gTemp.addColorStop(0, 'rgba(255, 94, 98, 0.4)'); gTemp.addColorStop(1, 'rgba(255, 94, 98, 0)');
         const gHum = ctx.createLinearGradient(0, 0, 0, 300);
-        gHum.addColorStop(0, '#1abc9c'); gHum.addColorStop(1, 'rgba(26, 188, 156, 0)');
+        gHum.addColorStop(0, 'rgba(26, 188, 156, 0.4)'); gHum.addColorStop(1, 'rgba(26, 188, 156, 0)');
 
         const chart = new Chart(ctx, {
             type: 'line',
@@ -131,38 +90,61 @@
             },
             options: {
                 responsive: true,
+                maintainAspectRatio: true,
                 scales: {
-                    x: { display: false },
-                    yTemp: { position: 'left', grid: { color: '#333' }, ticks: { color: '#ff5e62' } },
-                    yHum: { position: 'right', grid: { display: false }, ticks: { color: '#1abc9c' } }
+                    x: { 
+                        display: true, 
+                        grid: { 
+                            color: (context) => context.tick.label ? 'rgba(255,255,255,0.1)' : 'transparent', // Línea vertical solo en las horas
+                            drawBorder: false
+                        },
+                        ticks: { 
+                            color: '#555', 
+                            font: { size: 9 },
+                            maxRotation: 45,
+                            minRotation: 0,
+                            autoSkip: false // Nosotros filtramos las etiquetas manualmente
+                        } 
+                    },
+                    yTemp: { position: 'left', grid: { color: '#222' }, ticks: { color: '#ff5e62', font: {size: 10} } },
+                    yHum: { position: 'right', grid: { display: false }, ticks: { color: '#1abc9c', font: {size: 10} } }
                 },
                 plugins: { legend: { display: false } }
             }
         });
 
-        // Lectura tiempo real
+        // Datos en tiempo real
         db.ref('sensor').on('value', snapshot => {
             const data = snapshot.val();
             if (data && data.temperatura !== -999) {
                 document.getElementById('temp').innerText = data.temperatura + "°C";
                 document.getElementById('hum').innerText = data.humedad + "%";
-                document.getElementById('app-data').style.display = 'flex';
-                document.getElementById('error-card').style.display = 'none';
-            } else {
-                document.getElementById('app-data').style.display = 'none';
-                document.getElementById('error-card').style.display = 'block';
             }
         });
 
-        // Historial
-        db.ref('historial').limitToLast(100).on('value', snapshot => {
+        // Historial (288 puntos = 24h si grabas cada 5 min)
+        db.ref('historial').limitToLast(288).on('value', snapshot => {
             const historyData = snapshot.val();
             const labels = [], tData = [], hData = [];
+            
             for (let id in historyData) {
                 tData.push(historyData[id].t);
                 hData.push(historyData[id].h);
-                labels.push("");
+                
+                const date = new Date(historyData[id].ts);
+                const min = date.getMinutes();
+                const hr = date.getHours();
+
+                // LÓGICA DE HORAS: 
+                // Si el dato es del minuto 0 (o el más cercano), ponemos la hora.
+                // En el resto de puntos ponemos vacío para que no se amontone el eje X.
+                if (min >= 0 && min < 5) {
+                    labels.push(hr.toString().padStart(2, '0') + ":00");
+                } else {
+                    labels.push(""); 
+                }
             }
+            
             chart.data.labels = labels;
             chart.data.datasets[0].data = tData;
             chart.data.datasets[1].data = hData;
