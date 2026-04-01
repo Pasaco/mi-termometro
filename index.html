@@ -192,23 +192,40 @@
         });
 
         // --- 3. DETECTOR DE DATOS Y ERROR (TIEMPO REAL) ---
+        // --- DETECTOR DE DATOS, ERROR Y PLACA OFF ---
         db.ref('sensor').on('value', snapshot => {
             const data = snapshot.val();
-            const appData = document.getElementById('app-data');
-            const errorCard = document.getElementById('error-card');
+            const appData = document.getElementById('data');
+            const errorCard = document.getElementById('err');
+            const errorText = errorCard.querySelector('small');
 
-            // Si recibimos -999 o menor, activamos el modo error inmediatamente
-            if (!data || data.temperatura <= -900) {
+            if (!data) return;
+
+            // DETECTOR DE PLACA APAGADA (Heartbeat)
+            // Si el latido de Firebase tiene más de 65 segundos de antigüedad...
+            const ahoraEnSegundos = Math.floor(Date.now() / 1000);
+            const segundosTranscurridos = ahoraEnSegundos - data.latido;
+
+            if (segundosTranscurridos > 65) {
                 appData.style.display = 'none';
                 errorCard.style.display = 'block';
-            } else {
+                errorText.innerText = "PLACA APAGADA O SIN WIFI";
+            } 
+            // DETECTOR DE ERROR DE SENSOR
+            else if (data.temperatura <= -900) {
+                appData.style.display = 'none';
+                errorCard.style.display = 'block';
+                errorText.innerText = "SENSOR DESCONECTADO";
+            } 
+            // TODO FUNCIONANDO
+            else {
                 appData.style.display = 'flex';
                 errorCard.style.display = 'none';
-                document.getElementById('temp').innerText = data.temperatura.toFixed(1) + "°C";
-                document.getElementById('hum').innerText = data.humedad.toFixed(1) + "%";
+                document.getElementById('t').innerText = data.temperatura.toFixed(1) + "°C";
+                document.getElementById('h').innerText = data.humedad.toFixed(0) + "%";
             }
         });
-
+        
         // --- 4. HISTORIAL CRONOLÓGICO (24 HORAS) ---
         db.ref('historial').limitToLast(288).on('value', snapshot => {
             const historyData = snapshot.val();
