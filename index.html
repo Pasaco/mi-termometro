@@ -8,10 +8,39 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
     <style>
-        body { font-family: sans-serif; background: #1c1c1c; color: white; text-align: center; display: flex; flex-direction: column; justify-content: center; height: 100vh; margin: 0; }
-        .card { background: #2d2d2d; margin: 20px; padding: 30px; border-radius: 20px; box-shadow: 0 10px 20px rgba(0,0,0,0.5); }
+        body { 
+            font-family: sans-serif; 
+            background: #1c1c1c; 
+            color: white; 
+            text-align: center; 
+            display: flex; 
+            flex-direction: column; 
+            justify-content: center; 
+            height: 100vh; 
+            margin: 0; 
+        }
+        
+        .card { 
+            background: #2d2d2d; 
+            margin: 20px; 
+            padding: 30px; 
+            border-radius: 20px; 
+            box-shadow: 0 10px 20px rgba(0,0,0,0.5); 
+        }
+        
         .value { font-size: 3em; font-weight: bold; color: #0088cc; }
-        .label { color: #888; text-transform: uppercase; letter-spacing: 1px; }
+        .label { color: #888; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; }
+        
+        /* Estilos específicos para la tarjeta de error */
+        #error-card {
+            display: none; /* Oculto por defecto */
+            border: 2px solid #ff4444;
+            box-shadow: 0 0 20px rgba(255, 68, 68, 0.2);
+        }
+        
+        .error-title { color: #ff4444; font-size: 1.2em; font-weight: bold; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 1px;}
+        .error-message { font-size: 1.2em; color: #e0e0e0; }
+
         #denied { display: none; color: red; font-weight: bold; }
     </style>
 </head>
@@ -28,12 +57,18 @@
         </div>
     </div>
 
+    <div id="error-card" class="card">
+        <div class="error-title">⚠️ Atención</div>
+        <div class="error-message">Error: Sensor desconectado.</div>
+        <div style="font-size: 0.9em; color: #888; margin-top: 15px;">Revisa el cableado del DHT22 en la placa.</div>
+    </div>
+
     <div id="denied">⚠️ ACCESO DENEGADO: Usuario no autorizado.</div>
 
     <script>
         // Inicializar Telegram WebApp
         const tg = window.Telegram.WebApp;
-        tg.expand(); // Abrir a pantalla completa
+        tg.expand();
 
         // SEGURIDAD: Solo tu ID puede ver esto
         const MI_ID = 5395336798;
@@ -44,32 +79,33 @@
 
         // CONFIGURACIÓN FIREBASE
         const firebaseConfig = {
-            apiKey: "AIzaSyAz2wvO_ryzMLmBp2p7UULY6Q8mQVh_o2Y",
+            apiKey: "lAVRJpbYScspzLPigEupDN27eLehLobwXaNupv8n", 
             databaseURL: "https://temperatura-casa-fe2e1-default-rtdb.europe-west1.firebasedatabase.app"
         };
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
 
+        // Variables de los contenedores
+        const appContainer = document.getElementById('app');
+        const errorContainer = document.getElementById('error-card');
+
         // Leer datos en tiempo real
         db.ref('sensor').on('value', (snapshot) => {
             const data = snapshot.val();
-            const tempEl = document.getElementById('temp');
-            const humEl = document.getElementById('hum');
-
-            // Comprobar si hay código de error
-            if (data.temperatura === -999 || data.humedad === -999) {
-                tempEl.innerText = "⚠️ ERROR";
-                tempEl.style.color = "#ff4444"; // Color rojo
-                
-                humEl.innerText = "DESCONECTADO";
-                humEl.style.color = "#ff4444"; // Color rojo
+            
+            // Verificamos si no hay datos o si la placa manda el código de error
+            if (!data || data.temperatura === -999 || data.humedad === -999) {
+                // Hay error: Escondemos las gráficas, mostramos el cuadro rojo
+                appContainer.style.display = 'none';
+                errorContainer.style.display = 'block';
             } else {
-                // Si todo está bien, mostramos los datos normales en azul
-                tempEl.innerText = data.temperatura + " °C";
-                tempEl.style.color = "#0088cc"; 
+                // Todo está bien: Escondemos el cuadro de error, mostramos gráficas
+                errorContainer.style.display = 'none';
+                appContainer.style.display = 'block';
                 
-                humEl.innerText = data.humedad + " %";
-                humEl.style.color = "#0088cc"; 
+                // Actualizamos los números
+                document.getElementById('temp').innerText = data.temperatura + " °C";
+                document.getElementById('hum').innerText = data.humedad + " %";
             }
         });
     </script>
