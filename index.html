@@ -2,111 +2,110 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>Mi Termómetro Inteligente</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Termómetro con Gráfica</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        body { 
-            font-family: sans-serif; 
-            background: #1c1c1c; 
-            color: white; 
-            text-align: center; 
-            display: flex; 
-            flex-direction: column; 
-            justify-content: center; 
-            height: 100vh; 
-            margin: 0; 
-        }
-        
-        .card { 
-            background: #2d2d2d; 
-            margin: 20px; 
-            padding: 30px; 
-            border-radius: 20px; 
-            box-shadow: 0 10px 20px rgba(0,0,0,0.5); 
-        }
-        
-        .value { font-size: 3em; font-weight: bold; color: #0088cc; }
-        .label { color: #888; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; }
-        
-        /* Estilos específicos para la tarjeta de error */
-        #error-card {
-            display: none; /* Oculto por defecto */
-            border: 2px solid #ff4444;
-            box-shadow: 0 0 20px rgba(255, 68, 68, 0.2);
-        }
-        
-        .error-title { color: #ff4444; font-size: 1.2em; font-weight: bold; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 1px;}
-        .error-message { font-size: 1.2em; color: #e0e0e0; }
-
-        #denied { display: none; color: red; font-weight: bold; }
+        body { font-family: sans-serif; background: #1c1c1c; color: white; text-align: center; margin: 0; padding: 10px; }
+        .card { background: #2d2d2d; margin: 10px; padding: 20px; border-radius: 15px; box-shadow: 0 5px 15px rgba(0,0,0,0.5); }
+        .flex { display: flex; justify-content: space-around; }
+        .value { font-size: 1.8em; font-weight: bold; color: #0088cc; }
+        .label { color: #888; font-size: 0.8em; text-transform: uppercase; }
+        canvas { max-width: 100%; margin-top: 20px; }
+        #error-card { display: none; border: 2px solid #ff4444; }
     </style>
 </head>
 <body>
 
     <div id="app">
-        <div class="card">
-            <div class="label">Temperatura</div>
-            <div id="temp" class="value">-- °C</div>
+        <div class="card flex">
+            <div>
+                <div class="label">Temperatura</div>
+                <div id="temp" class="value">-- °C</div>
+            </div>
+            <div>
+                <div class="label">Humedad</div>
+                <div id="hum" class="value">-- %</div>
+            </div>
         </div>
+
         <div class="card">
-            <div class="label">Humedad</div>
-            <div id="hum" class="value">-- %</div>
+            <div class="label">Últimas 24 Horas</div>
+            <canvas id="grafica"></canvas>
         </div>
     </div>
 
     <div id="error-card" class="card">
-        <div class="error-title">⚠️ Atención</div>
-        <div class="error-message">Error: Sensor desconectado.</div>
-        <div style="font-size: 0.9em; color: #888; margin-top: 15px;">Revisa el cableado del DHT22 en la placa.</div>
+        <div style="color:#ff4444">⚠️ ERROR: SENSOR DESCONECTADO</div>
     </div>
 
-    <div id="denied">⚠️ ACCESO DENEGADO: Usuario no autorizado.</div>
-
     <script>
-        // Inicializar Telegram WebApp
         const tg = window.Telegram.WebApp;
         tg.expand();
 
-        // SEGURIDAD: Solo tu ID puede ver esto
-        const MI_ID = 5395336798;
-        if (tg.initDataUnsafe.user && tg.initDataUnsafe.user.id !== MI_ID) {
-            document.getElementById('app').style.display = 'none';
-            document.getElementById('denied').style.display = 'block';
-        }
-
-        // CONFIGURACIÓN FIREBASE
         const firebaseConfig = {
-            apiKey: "AIzaSyAz2wvO_ryzMLmBp2p7UULY6Q8mQVh_o2Y", 
+            apiKey: "AIzaSyAz2wvO_ryzMLmBp2p7UULY6Q8mQVh_o2Y",
             databaseURL: "https://temperatura-casa-fe2e1-default-rtdb.europe-west1.firebasedatabase.app"
         };
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
 
-        // Variables de los contenedores
-        const appContainer = document.getElementById('app');
-        const errorContainer = document.getElementById('error-card');
+        // CONFIGURACIÓN DE LA GRÁFICA
+        const ctx = document.getElementById('grafica').getContext('2d');
+        const chart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: [], // Aquí irán las horas
+                datasets: [{
+                    label: 'Temp °C',
+                    borderColor: '#0088cc',
+                    data: [],
+                    borderWidth: 2,
+                    pointRadius: 0,
+                    fill: false
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    x: { display: false }, // Ocultamos las etiquetas de tiempo para que no se amontonen
+                    y: { grid: { color: '#444' } }
+                },
+                plugins: { legend: { labels: { color: 'white' } } }
+            }
+        });
 
-        // Leer datos en tiempo real
+        // 1. Leer tiempo real (números grandes)
         db.ref('sensor').on('value', (snapshot) => {
             const data = snapshot.val();
-            
-            // Verificamos si no hay datos o si la placa manda el código de error
-            if (!data || data.temperatura === -999 || data.humedad === -999) {
-                // Hay error: Escondemos las gráficas, mostramos el cuadro rojo
-                appContainer.style.display = 'none';
-                errorContainer.style.display = 'block';
+            if (!data || data.temperatura === -999) {
+                document.getElementById('app').style.display = 'none';
+                document.getElementById('error-card').style.display = 'block';
             } else {
-                // Todo está bien: Escondemos el cuadro de error, mostramos gráficas
-                errorContainer.style.display = 'none';
-                appContainer.style.display = 'block';
-                
-                // Actualizamos los números
+                document.getElementById('app').style.display = 'block';
+                document.getElementById('error-card').style.display = 'none';
                 document.getElementById('temp').innerText = data.temperatura + " °C";
                 document.getElementById('hum').innerText = data.humedad + " %";
             }
+        });
+
+        // 2. Leer Historial (Gráfica) - Limitamos a los últimos 288 puntos (24h)
+        db.ref('historial').limitToLast(288).on('value', (snapshot) => {
+            const historyData = snapshot.val();
+            const temps = [];
+            const labels = [];
+
+            for (let id in historyData) {
+                temps.push(historyData[id].t);
+                labels.push(new Date(historyData[id].ts).toLocaleTimeString());
+            }
+
+            chart.data.labels = labels;
+            chart.data.datasets[0].data = temps;
+            chart.update(); // Dibujar de nuevo
         });
     </script>
 </body>
