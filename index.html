@@ -1,260 +1,128 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>Termómetro Pro - Cronología 24h</title>
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    
-    <style>
-        :root {
-            --bg: #121212;
-            --card-bg: #1e1e1e;
-            --temp-red: #ff6b6b; /* Rojo pastel suave */
-            --hum-teal: #1abc9c; /* Verde agua */
-            --text-main: #ffffff;
-            --text-dim: #666;
-        }
+#include <ESP8266WiFi.h>
+#include <FirebaseESP8266.h>
+#include <UniversalTelegramBot.h>
+#include <WiFiClientSecure.h>
+#include <NTPClient.h>
+#include <WiFiUdp.h>
+#include <DHT.h>
 
-        body { 
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
-            background: var(--bg); 
-            color: var(--text-main); 
-            margin: 0; 
-            padding: 0; 
-            overflow-x: hidden;
-        }
+// --- 1. CREDENCIALES (Sustituye por las tuyas) ---
+const char* ssid = "MOVISTAR_1E80";
+const char* password = "4fbsymQ3A4zwL6F7xUFU";
+const char* botToken = "8521759005:AAGnYu5XRrA2H87mMlTlyRV3E9gmcUYH9Xw";
+const String chatId = "5395336798";
+const String webAppUrl = "https://pasaco.github.io/mi-termometro/"; 
 
-        /* SECCIÓN 1: DATOS ACTUALES (CENTRADOS) */
-        .hero-section { 
-            height: 100vh; 
-            display: flex; 
-            flex-direction: column; 
-            justify-content: center; /* Centrado vertical */
-            align-items: center; 
-            position: relative;
-        }
+// --- 2. FIREBASE ---
+#define FIREBASE_HOST "temperatura-casa-fe2e1-default-rtdb.europe-west1.firebasedatabase.app"
+#define FIREBASE_AUTH "lAVRJpbYScspzLPigEupDN27eLehLobwXaNupv8n" 
 
-        .realtime-container {
-            display: flex;
-            gap: 15px;
-            width: 90%;
-            max-width: 420px;
-        }
+// --- 3. HARDWARE ---
+#define DHTPIN 4 // Pin D2
+#define DHTTYPE DHT22
+DHT dht(DHTPIN, DHTTYPE);
 
-        .card { 
-            background: var(--card-bg); 
-            border-radius: 28px; 
-            box-shadow: 0 10px 30px rgba(0,0,0,0.5); 
-            border: 1px solid #333;
-            padding: 20px;
-            text-align: center;
-        }
+// --- 4. OBJETOS ---
+WiFiUDP ntpUDP;
+NTPClient timeClient(ntpUDP, "pool.ntp.org", 3600 * 2); // España GMT+2
 
-        .realtime-card {
-            flex: 1;
-            height: 130px;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-        }
+WiFiClientSecure client;
+UniversalTelegramBot bot(botToken, client);
+FirebaseData firebaseData;
+FirebaseConfig config;
+FirebaseAuth auth;
 
-        /* Bordes decorativos inferiores */
-        .card-temp { border-bottom: 4px solid var(--temp-red); }
-        .card-hum { border-bottom: 4px solid var(--hum-teal); }
+unsigned long sendDataPrevMillis = 0;
+unsigned long lastLogMillis = 0;
+int lastHourNotified = -1;
+int lastMinuteNotified = -1;
+int lastBotMsgId = 0; // Para guardar el ID del mensaje y poder editarlo
 
-        .value { font-size: 2.2em; font-weight: 800; margin-top: 5px; }
-        .temp-val { color: var(--temp-red); text-shadow: 0 0 15px rgba(255,107,107,0.2); }
-        .hum-val { color: var(--hum-teal); text-shadow: 0 0 15px rgba(26,188,156,0.2); }
-        .label { color: var(--text-dim); font-size: 0.7em; text-transform: uppercase; letter-spacing: 2px; font-weight: bold; }
+void setup() {
+  Serial.begin(115200);
+  dht.begin();
+  client.setInsecure(); // Para Telegram HTTPS
 
-        /* SECCIÓN 2: GRÁFICA (SCROLL) */
-        .chart-section { 
-            padding: 40px 15px; 
-            background: #0a0a0a; 
-            display: flex; 
-            flex-direction: column; 
-            align-items: center; 
-        }
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("\n✅ WiFi OK");
 
-        .chart-card { width: 95%; max-width: 450px; padding: 15px; box-sizing: border-box; }
+  config.host = FIREBASE_HOST;
+  config.signer.tokens.legacy_token = FIREBASE_AUTH;
+  Firebase.begin(&config, &auth);
+  Firebase.reconnectWiFi(true);
 
-        /* INDICADOR SCROLL */
-        .scroll-hint { 
-            position: absolute; 
-            bottom: 35px; 
-            color: #444; 
-            font-size: 0.7em; 
-            font-weight: bold;
-            animation: bounce 2s infinite; 
-            letter-spacing: 1.5px;
-        }
+  timeClient.begin();
+  Serial.println("🚀 Sistema Listo");
+}
 
-        @keyframes bounce { 
-            0%, 20%, 50%, 80%, 100% {transform: translateY(0);} 
-            40% {transform: translateY(-10px);} 
-            60% {transform: translateY(-5px);} 
-        }
+int lastMinuteModified = -1;
 
-        /* TARJETA DE ERROR */
-        #err { 
-            display: none; 
-            border: 2px solid var(--red); 
-            padding: 25px; 
-            border-radius: 28px; 
-            width: 85%; /* Deja un 7.5% de aire a cada lado */
-            max-width: 380px; /* Evita que en pantallas grandes se estire demasiado */
-            text-align: center; 
-            box-sizing: border-box; /* ¡ESTO ES LA CLAVE! Evita que el padding ensanche la caja */
-            background: rgba(255, 107, 107, 0.05); /* Un toque sutil de fondo rojo */
-        }
-    </style>
-</head>
-<body>
+void loop() {
+  timeClient.update();
 
-    <div id="main-content">
-        <div class="hero-section" id="hero">
-            <div id="app-data" class="realtime-container">
-                <div class="card realtime-card card-temp">
-                    <div class="label">Temperatura</div>
-                    <div id="temp" class="value temp-val">--°C</div>
-                </div>
-                <div class="card realtime-card card-hum">
-                    <div class="label">Humedad</div>
-                    <div id="hum" class="value hum-val">--%</div>
-                </div>
-            </div>
+  unsigned long currentMillis = millis();
+  int currentHour = timeClient.getHours();
+  int currentMinute = timeClient.getMinutes();
 
-            <div id="error-card" class="card">
-                <div style="color: var(--temp-red); font-size: 1.4em; font-weight: bold; margin-bottom: 10px;">⚠️ SENSOR ERROR</div>
-                <div style="color: #fff; font-size: 0.8em; opacity: 0.8;">Comprueba la conexión del DHT22</div>
-            </div>
+  // --- A. ACTUALIZACIÓN EN VIVO + LATIDO (Cada 10 seg para no saturar) ---
+  if (currentMillis - sendDataPrevMillis > 10000) {
+    sendDataPrevMillis = currentMillis;
+    float t = dht.readTemperature();
+    float h = dht.readHumidity();
 
-            <div class="scroll-hint">🔼 HISTORIAL CRONOLÓGICO 🔼</div>
-        </div>
+    if (!isnan(t) && !isnan(h)) {
+      Firebase.setFloat(firebaseData, "/sensor/temperatura", t);
+      Firebase.setFloat(firebaseData, "/sensor/humedad", h);
+      // ENVIAMOS EL LATIDO (Segundos desde 1970)
+      Firebase.setInt(firebaseData, "/sensor/latido", timeClient.getEpochTime()); 
+    } else {
+      Firebase.setFloat(firebaseData, "/sensor/temperatura", -999);
+    }
+  }
 
-        <div class="chart-section">
-            <div class="card chart-card">
-                <div class="label" style="margin-bottom:20px; text-align:center;">Evolución 24 Horas</div>
-                <canvas id="graficaDual"></canvas>
-            </div>
-        </div>
-    </div>
+  // --- B. HISTORIAL PARA LA GRÁFICA (Cada 5 Minutos) ---
+  if (currentMillis - lastLogMillis > 300000 || lastLogMillis == 0) {
+    lastLogMillis = currentMillis;
+    float h = dht.readHumidity();
+    float t = dht.readTemperature();
 
-    <script>
-        const tg = window.Telegram.WebApp;
-        tg.expand();
+    if (!isnan(h) && !isnan(t)) {
+      FirebaseJson json;
+      json.add("t", t);
+      json.add("h", h);
+      // Estampa de tiempo del servidor (imprescindible para el eje X cronológico)
+      json.set("ts/.sv", "timestamp"); 
+      
+      if (Firebase.pushJSON(firebaseData, "/historial", json)) {
+        Serial.println("📊 Punto añadido al historial");
+      }
+    }
+  }
 
-        // --- 1. CONFIGURACIÓN FIREBASE ---
-        const firebaseConfig = {
-            apiKey: "AIzaSyAz2wvO_ryzMLmBp2p7UULY6Q8mQVh_o2Y", // Reemplaza por tu API Key
-            databaseURL: "https://temperatura-casa-fe2e1-default-rtdb.europe-west1.firebasedatabase.app"
-        };
-        firebase.initializeApp(firebaseConfig);
-        const db = firebase.database();
+// --- C. NOTIFICACIÓN CON HORA (Cada 5 min) ---
+if (currentMinute % 1 == 0 && currentMinute != lastMinuteNotified) {
+  float t = dht.readTemperature();
+  float h = dht.readHumidity();
+  
+  if (!isnan(t)) {
+    String msg = "🏠 *Estado de la Casa*\n";
+    msg += "📅 Envío: " + timeClient.getFormattedTime() + "\n";
+    msg += "🌡 Temp: " + String(t, 1) + " °C\n";
+    msg += "💧 Hum: " + String(h, 0) + " %\n";
+    msg += "✨ _Actualizado automáticamente_";
 
-        // --- 2. PREPARACIÓN DE LA GRÁFICA ---
-        const ctx = document.getElementById('graficaDual').getContext('2d');
-        
-        // Gradientes para efecto de intensidad
-        const gTemp = ctx.createLinearGradient(0, 0, 0, 300);
-        gTemp.addColorStop(0, 'rgba(255, 107, 107, 0.4)'); gTemp.addColorStop(1, 'rgba(255, 107, 107, 0)');
-        const gHum = ctx.createLinearGradient(0, 0, 0, 300);
-        gHum.addColorStop(0, 'rgba(26, 188, 156, 0.4)'); gHum.addColorStop(1, 'rgba(26, 188, 156, 0)');
+    String kb = "[[{ \"text\" : \"📊 Ver Gráfica\", \"web_app\": {\"url\": \"" + webAppUrl + "\"} }]]";
 
-        const chart = new Chart(ctx, {
-            type: 'line',
-            data: { labels: [], datasets: [
-                { label: 'Temp', yAxisID: 'yTemp', borderColor: '#ff6b6b', backgroundColor: gTemp, data: [], borderWidth: 3, pointRadius: 0, fill: true, tension: 0.4 },
-                { label: 'Hum', yAxisID: 'yHum', borderColor: '#1abc9c', backgroundColor: gHum, data: [], borderWidth: 3, pointRadius: 0, fill: true, tension: 0.4 }
-            ]},
-            options: {
-                responsive: true,
-                interaction: { mode: 'index', intersect: false },
-                scales: {
-                    x: { 
-                        display: true,
-                        grid: {
-                            // Solo dibuja línea vertical si hay una etiqueta (la hora)
-                            color: (context) => context.tick.label ? 'rgba(255,255,255,0.1)' : 'transparent',
-                            drawBorder: false
-                        },
-                        ticks: { color: '#555', font: { size: 9 }, maxRotation: 0, autoSkip: false }
-                    },
-                    yTemp: { position: 'left', grid: { color: '#222' }, ticks: { color: '#ff6b6b', font: { size: 10 } } },
-                    yHum: { position: 'right', grid: { display: false }, ticks: { color: '#1abc9c', font: { size: 10 } } }
-                },
-                plugins: { legend: { display: false } }
-            }
-        });
-
-        // --- 3. DETECTOR DE DATOS Y ERROR (TIEMPO REAL) ---
-        // --- DETECTOR DE DATOS, ERROR Y PLACA OFF ---
-        db.ref('sensor').on('value', snapshot => {
-            const data = snapshot.val();
-            const appData = document.getElementById('data');
-            const errorCard = document.getElementById('err');
-            const errorText = errorCard.querySelector('small');
-
-            if (!data) return;
-
-            // DETECTOR DE PLACA APAGADA (Heartbeat)
-            // Si el latido de Firebase tiene más de 65 segundos de antigüedad...
-            const ahoraEnSegundos = Math.floor(Date.now() / 1000);
-            const segundosTranscurridos = ahoraEnSegundos - data.latido;
-
-            if (segundosTranscurridos > 65) {
-                appData.style.display = 'none';
-                errorCard.style.display = 'block';
-                errorText.innerText = "PLACA APAGADA O SIN WIFI";
-            } 
-            // DETECTOR DE ERROR DE SENSOR
-            else if (data.temperatura <= -900) {
-                appData.style.display = 'none';
-                errorCard.style.display = 'block';
-                errorText.innerText = "SENSOR DESCONECTADO";
-            } 
-            // TODO FUNCIONANDO
-            else {
-                appData.style.display = 'flex';
-                errorCard.style.display = 'none';
-                document.getElementById('t').innerText = data.temperatura.toFixed(1) + "°C";
-                document.getElementById('h').innerText = data.humedad.toFixed(0) + "%";
-            }
-        });
-        
-        // --- 4. HISTORIAL CRONOLÓGICO (24 HORAS) ---
-        db.ref('historial').limitToLast(288).on('value', snapshot => {
-            const historyData = snapshot.val();
-            const labels = [], tData = [], hData = [];
-            let lastHourLabel = -1;
-
-            for (let id in historyData) {
-                const punto = historyData[id];
-                tData.push(punto.t);
-                hData.push(punto.h);
-                
-                const date = new Date(punto.ts);
-                const currentHour = date.getHours();
-
-                // EJE X CRONOLÓGICO: 
-                // Si esta hora es diferente a la anterior, ponemos la etiqueta "HH:00"
-                if (currentHour !== lastHourLabel) {
-                    labels.push(currentHour.toString().padStart(2, '0') + ":00");
-                    lastHourLabel = currentHour;
-                } else {
-                    labels.push(""); // Puntos intermedios sin texto para no saturar
-                }
-            }
-
-            chart.data.labels = labels;
-            chart.data.datasets[0].data = tData;
-            chart.data.datasets[1].data = hData;
-            chart.update('none'); // Actualización suave
-        });
-    </script>
-</body>
-</html>
+    if (bot.sendMessageWithInlineKeyboard(chatId, msg, "Markdown", kb)) {
+      lastMinuteNotified = currentMinute;
+      Serial.println("📩 Telegram enviado con éxito.");
+    }
+  }
+}
+  
+  delay(200); // Pequeña pausa de cortesía para el procesador
+}
