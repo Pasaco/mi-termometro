@@ -2,44 +2,102 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Termómetro con Gráfica</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>Termómetro con Historial</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        body { font-family: sans-serif; background: #1c1c1c; color: white; text-align: center; margin: 0; padding: 10px; }
-        .card { background: #2d2d2d; margin: 10px; padding: 20px; border-radius: 15px; box-shadow: 0 5px 15px rgba(0,0,0,0.5); }
-        .flex { display: flex; justify-content: space-around; }
-        .value { font-size: 1.8em; font-weight: bold; color: #0088cc; }
-        .label { color: #888; font-size: 0.8em; text-transform: uppercase; }
-        canvas { max-width: 100%; margin-top: 20px; }
-        #error-card { display: none; border: 2px solid #ff4444; }
+        body { 
+            font-family: sans-serif; 
+            background: #1c1c1c; 
+            color: white; 
+            margin: 0; 
+            padding: 0;
+            overflow-x: hidden;
+        }
+
+        /* Contenedor de pantalla completa para los datos actuales */
+        .hero-section {
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+        }
+
+        .card { 
+            background: #2d2d2d; 
+            margin: 10px; 
+            padding: 25px; 
+            border-radius: 20px; 
+            box-shadow: 0 5px 15px rgba(0,0,0,0.5); 
+            width: 85%;
+        }
+
+        .flex { display: flex; justify-content: space-around; width: 100%; }
+        .value { font-size: 2.2em; font-weight: bold; color: #0088cc; }
+        .label { color: #888; font-size: 0.9em; text-transform: uppercase; letter-spacing: 1px; }
+
+        /* Indicador de "Deslizar" */
+        .scroll-hint {
+            position: absolute;
+            bottom: 20px;
+            color: #555;
+            font-size: 0.8em;
+            animation: bounce 2s infinite;
+        }
+
+        @keyframes bounce {
+            0%, 20%, 50%, 80%, 100% {transform: translateY(0);}
+            40% {transform: translateY(-10px);}
+            60% {transform: translateY(-5px);}
+        }
+
+        /* Sección de la gráfica */
+        .chart-section {
+            padding: 20px 10px 50px 10px;
+            background: #151515;
+            min-height: 400px;
+        }
+
+        #error-card { display: none; border: 2px solid #ff4444; width: 80%; }
+        
+        canvas { width: 100% !important; height: auto !important; }
     </style>
 </head>
 <body>
 
-    <div id="app">
-        <div class="card flex">
-            <div>
-                <div class="label">Temperatura</div>
-                <div id="temp" class="value">-- °C</div>
+    <div id="main-content">
+        <div class="hero-section" id="hero">
+            <div id="app-data" style="width: 100%; display: flex; flex-direction: column; align-items: center;">
+                <div class="card flex">
+                    <div>
+                        <div class="label">Temp</div>
+                        <div id="temp" class="value">-- °C</div>
+                    </div>
+                    <div>
+                        <div class="label">Hum</div>
+                        <div id="hum" class="value">-- %</div>
+                    </div>
+                </div>
+                <div class="scroll-hint">🔼 Desliza para ver el historial 🔼</div>
             </div>
-            <div>
-                <div class="label">Humedad</div>
-                <div id="hum" class="value">-- %</div>
+
+            <div id="error-card" class="card">
+                <div style="color:#ff4444; font-weight: bold;">⚠️ SENSOR DESCONECTADO</div>
+                <div style="font-size: 0.8em; color: #888; margin-top: 10px;">Comprueba los cables del DHT22</div>
             </div>
         </div>
 
-        <div class="card">
-            <div class="label">Últimas 24 Horas</div>
-            <canvas id="grafica"></canvas>
+        <div class="chart-section">
+            <div class="card">
+                <div class="label" style="margin-bottom: 15px;">Historial 24h</div>
+                <canvas id="grafica"></canvas>
+            </div>
         </div>
-    </div>
-
-    <div id="error-card" class="card">
-        <div style="color:#ff4444">⚠️ ERROR: SENSOR DESCONECTADO</div>
     </div>
 
     <script>
@@ -58,41 +116,50 @@
         const chart = new Chart(ctx, {
             type: 'line',
             data: {
-                labels: [], // Aquí irán las horas
+                labels: [],
                 datasets: [{
-                    label: 'Temp °C',
+                    label: 'Temperatura °C',
                     borderColor: '#0088cc',
+                    backgroundColor: 'rgba(0, 136, 204, 0.1)',
                     data: [],
-                    borderWidth: 2,
+                    borderWidth: 3,
                     pointRadius: 0,
-                    fill: false
+                    fill: true,
+                    tension: 0.4 // Curva suave
                 }]
             },
             options: {
                 responsive: true,
+                maintainAspectRatio: true,
                 scales: {
-                    x: { display: false }, // Ocultamos las etiquetas de tiempo para que no se amontonen
-                    y: { grid: { color: '#444' } }
+                    x: { display: false },
+                    y: { 
+                        grid: { color: '#333' },
+                        ticks: { color: '#888' }
+                    }
                 },
-                plugins: { legend: { labels: { color: 'white' } } }
+                plugins: { legend: { display: false } }
             }
         });
 
-        // 1. Leer tiempo real (números grandes)
+        // 1. Datos en tiempo real
         db.ref('sensor').on('value', (snapshot) => {
             const data = snapshot.val();
+            const appData = document.getElementById('app-data');
+            const errorCard = document.getElementById('error-card');
+
             if (!data || data.temperatura === -999) {
-                document.getElementById('app').style.display = 'none';
-                document.getElementById('error-card').style.display = 'block';
+                appData.style.display = 'none';
+                errorCard.style.display = 'block';
             } else {
-                document.getElementById('app').style.display = 'block';
-                document.getElementById('error-card').style.display = 'none';
+                appData.style.display = 'flex';
+                errorCard.style.display = 'none';
                 document.getElementById('temp').innerText = data.temperatura + " °C";
                 document.getElementById('hum').innerText = data.humedad + " %";
             }
         });
 
-        // 2. Leer Historial (Gráfica) - Limitamos a los últimos 288 puntos (24h)
+        // 2. Historial (288 puntos = 24h)
         db.ref('historial').limitToLast(288).on('value', (snapshot) => {
             const historyData = snapshot.val();
             const temps = [];
@@ -105,7 +172,7 @@
 
             chart.data.labels = labels;
             chart.data.datasets[0].data = temps;
-            chart.update(); // Dibujar de nuevo
+            chart.update();
         });
     </script>
 </body>
