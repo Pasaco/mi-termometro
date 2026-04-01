@@ -100,12 +100,16 @@
         }
 
         /* TARJETA DE ERROR */
-        #error-card { 
+        #err { 
             display: none; 
-            background: rgba(255, 107, 107, 0.05); 
-            border: 2px solid var(--temp-red); 
-            width: 85%;
-            padding: 30px;
+            border: 2px solid var(--red); 
+            padding: 25px; 
+            border-radius: 28px; 
+            width: 85%; /* Deja un 7.5% de aire a cada lado */
+            max-width: 380px; /* Evita que en pantallas grandes se estire demasiado */
+            text-align: center; 
+            box-sizing: border-box; /* ¡ESTO ES LA CLAVE! Evita que el padding ensanche la caja */
+            background: rgba(255, 107, 107, 0.05); /* Un toque sutil de fondo rojo */
         }
     </style>
 </head>
