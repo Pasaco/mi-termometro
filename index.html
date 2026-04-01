@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>Termómetro Pro v5.0</title>
+    <title>Termómetro Pro v6.0</title>
     
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
@@ -22,82 +22,59 @@
 
         body { 
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
-            background: var(--bg); 
-            color: var(--text-main); 
-            margin: 0; padding: 0; 
-            overflow-x: hidden;
+            background: var(--bg); color: var(--text-main); margin: 0; padding: 0; 
         }
 
-        /* VISTA PRINCIPAL CENTRADA */
         .hero-section { 
-            height: 100vh; 
-            display: flex; 
-            flex-direction: column; 
-            justify-content: center; 
-            align-items: center; 
-            position: relative;
+            height: 100vh; display: flex; flex-direction: column; 
+            justify-content: center; align-items: center; position: relative;
         }
 
         .realtime-container {
-            display: flex;
-            gap: 15px;
-            width: 90%;
-            max-width: 420px;
+            display: flex; gap: 15px; width: 90%; max-width: 420px;
         }
 
         .card { 
-            background: var(--card-bg); 
-            border-radius: 28px; 
-            border: 1px solid #333;
-            padding: 22px;
-            text-align: center;
-            flex: 1;
+            background: var(--card-bg); border-radius: 28px; 
+            border: 1px solid #333; padding: 20px; text-align: center; flex: 1;
         }
 
-        /* Estilo de valores actuales */
         .card-temp { border-bottom: 4px solid var(--red); }
         .card-hum { border-bottom: 4px solid var(--teal); }
         .value { font-size: 2.3em; font-weight: 800; margin-top: 5px; }
-        .label { color: var(--text-dim); font-size: 0.7em; text-transform: uppercase; letter-spacing: 2px; font-weight: bold; }
+        .label { color: var(--text-dim); font-size: 0.7em; text-transform: uppercase; letter-spacing: 2px; }
 
-        /* CUADRO DE ERROR (Corregido para móvil) */
+        /* CUADRO DE ERROR CORREGIDO */
         #error-card { 
-            display: none; /* Se activa por JavaScript */
-            background: rgba(255, 107, 107, 0.08); 
-            border: 2px solid var(--red); 
-            border-radius: 28px;
-            padding: 25px;
-            width: 85%; /* Margen lateral elegante */
-            max-width: 380px; 
-            text-align: center;
-            box-sizing: border-box; /* Evita que el padding ensanche la caja */
-            box-shadow: 0 0 20px rgba(255, 107, 107, 0.1);
+            display: none; background: rgba(255, 107, 107, 0.05); 
+            border: 2px solid var(--red); border-radius: 28px;
+            padding: 25px; width: 85%; max-width: 380px; 
+            text-align: center; box-sizing: border-box; 
         }
 
-        /* SECCIÓN DE LA GRÁFICA */
+        /* SECCIÓN GRÁFICA CON ALTURA CONTROLADA */
         .chart-section { 
-            padding: 40px 15px; 
-            background: #0a0a0a; 
-            display: flex; 
-            flex-direction: column; 
-            align-items: center; 
+            padding: 20px 15px 50px 15px; background: #0a0a0a; 
+            display: flex; flex-direction: column; align-items: center; 
         }
 
         .chart-card { 
-            width: 95%; 
-            max-width: 450px; 
-            background: var(--card-bg);
-            border-radius: 28px;
-            padding: 15px;
-            box-sizing: border-box;
+            width: 100%; max-width: 450px; background: var(--card-bg);
+            border-radius: 28px; padding: 15px; box-sizing: border-box;
+            border: 1px solid #333;
+        }
+
+        /* Contenedor con altura fija para evitar el estiramiento */
+        .chart-container {
+            position: relative;
+            height: 300px; /* AQUÍ SE CONTROLA EL ALTO */
+            width: 100%;
         }
 
         .scroll-hint { 
-            position: absolute; bottom: 30px; 
-            color: #444; font-size: 0.7em; font-weight: bold;
-            animation: bounce 2s infinite; letter-spacing: 1px;
+            position: absolute; bottom: 30px; color: #444; font-size: 0.7em; 
+            animation: bounce 2s infinite; font-weight: bold;
         }
-
         @keyframes bounce { 0%, 100% {transform: translateY(0);} 50% {transform: translateY(-10px);} }
     </style>
 </head>
@@ -116,8 +93,8 @@
         </div>
 
         <div id="error-card">
-            <div style="color: var(--red); font-size: 1.3em; font-weight: bold; margin-bottom: 8px;">⚠️ ESTADO DEL SISTEMA</div>
-            <div id="error-text" style="color: #fff; font-size: 0.9em; opacity: 0.9;">Iniciando conexión...</div>
+            <div style="color: var(--red); font-weight: bold; margin-bottom: 5px;">⚠️ ESTADO DEL SISTEMA</div>
+            <small id="error-text" style="color: #fff; opacity: 0.8;"></small>
         </div>
 
         <div class="scroll-hint">🔼 DESLIZA PARA HISTORIAL 🔼</div>
@@ -125,12 +102,15 @@
 
     <div class="chart-section">
         <div class="chart-card">
-            <div class="label" style="text-align:center; margin-bottom:20px;">Evolución 24 Horas</div>
-            <canvas id="graficaDual"></canvas>
+            <div class="label" style="text-align:center; margin-bottom:15px;">Evolución 24 Horas</div>
+            <div class="chart-container">
+                <canvas id="graficaDual"></canvas>
+            </div>
         </div>
     </div>
 
-<script>
+
+    <script>
         const tg = window.Telegram.WebApp;
         tg.expand();
 
@@ -145,7 +125,6 @@
         // --- 2. CONFIGURACIÓN DE LA GRÁFICA (Chart.js) ---
         const ctx = document.getElementById('graficaDual').getContext('2d');
         
-        // Gradientes estéticos
         const gT = ctx.createLinearGradient(0, 0, 0, 300);
         gT.addColorStop(0, 'rgba(255, 107, 107, 0.4)'); gT.addColorStop(1, 'rgba(255, 107, 107, 0)');
         const gH = ctx.createLinearGradient(0, 0, 0, 300);
@@ -154,16 +133,19 @@
         const chart = new Chart(ctx, {
             type: 'line',
             data: { labels: [], datasets: [
-                { label: 'Temp', yAxisID: 'yT', borderColor: '#ff6b6b', backgroundColor: gT, data: [], borderWidth: 3, pointRadius: 0, fill: true, tension: 0.4 },
-                { label: 'Hum', yAxisID: 'yH', borderColor: '#1abc9c', backgroundColor: gH, data: [], borderWidth: 3, pointRadius: 0, fill: true, tension: 0.4 }
+                { label: 'T', yAxisID: 'yT', borderColor: '#ff6b6b', backgroundColor: gT, data: [], borderWidth: 3, pointRadius: 0, fill: true, tension: 0.4 },
+                { label: 'H', yAxisID: 'yH', borderColor: '#1abc9c', backgroundColor: gH, data: [], borderWidth: 3, pointRadius: 0, fill: true, tension: 0.4 }
             ]},
             options: {
                 responsive: true,
-                maintainAspectRatio: false,
+                maintainAspectRatio: false, // Ahora sí obedece al contenedor de 300px
                 interaction: { mode: 'index', intersect: false },
                 scales: {
                     x: { 
-                        grid: { color: (c) => c.tick.label ? '#333' : 'transparent', drawBorder: false },
+                        grid: { 
+                            color: (c) => c.tick && c.tick.label ? 'rgba(255,255,255,0.1)' : 'transparent', 
+                            drawBorder: false 
+                        },
                         ticks: { color: '#555', font: { size: 9 }, maxRotation: 0, autoSkip: false }
                     },
                     yT: { position: 'left', grid: { color: '#222' }, ticks: { color: '#ff6b6b' } },
@@ -173,31 +155,31 @@
             }
         });
 
-        // --- 3. MONITOR DE DATOS EN TIEMPO REAL Y "LATIDO" ---
+        // --- 3. MONITOR EN TIEMPO REAL (DATOS, ERROR Y HEARTBEAT) ---
         db.ref('sensor').on('value', snapshot => {
             const data = snapshot.val();
+            if (!data) return;
+
             const appData = document.getElementById('app-data');
             const errorCard = document.getElementById('error-card');
             const errorText = document.getElementById('error-text');
 
-            if (!data) return;
-
-            // Lógica de "Placa Apagada" (Heartbeat)
             const ahora = Math.floor(Date.now() / 1000);
             const segundosTranscurridos = ahora - data.latido;
 
-            if (segundosTranscurridos > 60) {
+            // Detección de Placa Apagada (más de 75 seg sin latido)
+            if (segundosTranscurridos > 75) {
                 appData.style.display = 'none';
                 errorCard.style.display = 'block';
-                errorText.innerText = "SISTEMA FUERA DE LÍNEA (Placa apagada)";
+                errorText.innerText = "SISTEMA OFF: Placa desconectada";
             } 
-            // Lógica de Error de Sensor (-999)
+            // Detección de Error de Sensor (-999)
             else if (data.temperatura <= -900) {
                 appData.style.display = 'none';
                 errorCard.style.display = 'block';
-                errorText.innerText = "FALLO TÉCNICO: Sensor desconectado";
+                errorText.innerText = "ERROR TÉCNICO: Sensor fallando";
             } 
-            // Estado OK
+            // Todo correcto
             else {
                 appData.style.display = 'flex';
                 errorCard.style.display = 'none';
@@ -206,26 +188,27 @@
             }
         });
 
-        // --- 4. HISTORIAL CON ESPACIADO PROPORCIONAL ---
+        // --- 4. HISTORIAL CON EJE X PROPORCIONAL ---
         db.ref('historial').limitToLast(288).on('value', snapshot => {
             const historyData = snapshot.val();
             if (!historyData) return;
 
             const labels = [], tData = [], hData = [];
-            let lastHourShown = -1;
+            let lastHourLabel = -1;
 
+            // Iteramos sobre todos los puntos para mantener la línea de tiempo
             Object.values(historyData).forEach(punto => {
                 tData.push(punto.t);
                 hData.push(punto.h);
                 
-                const fecha = new Date(punto.ts);
-                const hora = fecha.getHours();
+                const d = new Date(punto.ts);
+                const hora = d.getHours();
 
-                // Solo ponemos la hora si ha cambiado respecto al punto anterior
-                // Esto garantiza que el eje X sea una línea de tiempo proporcional
-                if (hora !== lastHourShown) {
+                // Solo ponemos el texto de la hora (01:00, etc.) cuando cambia la hora
+                // Esto crea una cuadrícula limpia y proporcional
+                if (hora !== lastHourLabel) {
                     labels.push(hora.toString().padStart(2, '0') + ":00");
-                    lastHourShown = hora;
+                    lastHourLabel = hora;
                 } else {
                     labels.push(""); 
                 }
@@ -239,4 +222,3 @@
     </script>
 </body>
 </html>
-        
