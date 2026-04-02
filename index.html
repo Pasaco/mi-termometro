@@ -109,9 +109,6 @@
         </div>
     </div>
 
-
-
-    
 <script>
         const tg = window.Telegram.WebApp;
         tg.expand();
@@ -161,7 +158,8 @@
             const appData = document.getElementById('app-data'), errorCard = document.getElementById('error-card'), errorText = document.getElementById('error-text');
             const ahora = Math.floor(Date.now() / 1000);
             
-            if (ahora - d.latido > 75) {
+            // LÓGICA DE PLACA APAGADA ASEGURADA (Si no hay latido o han pasado más de 75 seg)
+            if (!d.latido || (ahora - d.latido > 75)) {
                 appData.style.display = 'none'; errorCard.style.display = 'block'; errorText.innerText = "PLACA FUERA DE LÍNEA";
             } else if (d.temperatura <= -900) {
                 appData.style.display = 'none'; errorCard.style.display = 'block'; errorText.innerText = "ERROR DE SENSOR";
