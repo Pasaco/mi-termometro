@@ -151,24 +151,47 @@
             }
         });
 
-        // --- 3. MONITOR EN TIEMPO REAL (DATOS Y ERRORES) ---
+        // --- 3. MONITOR EN TIEMPO REAL (EL VIGILANTE) ---
+        let datosActuales = null;
+
+        // Cuando Firebase reciba datos nuevos, los guardamos y actualizamos la pantalla
         db.ref('sensor').on('value', s => {
-            const d = s.val();
-            if (!d) return;
-            const appData = document.getElementById('app-data'), errorCard = document.getElementById('error-card'), errorText = document.getElementById('error-text');
-            const ahora = Math.floor(Date.now() / 1000);
-            
-            // LÓGICA DE PLACA APAGADA ASEGURADA (Si no hay latido o han pasado más de 75 seg)
-            if (!d.latido || (ahora - d.latido > 75)) {
-                appData.style.display = 'none'; errorCard.style.display = 'block'; errorText.innerText = "PLACA FUERA DE LÍNEA";
-            } else if (d.temperatura <= -900) {
-                appData.style.display = 'none'; errorCard.style.display = 'block'; errorText.innerText = "ERROR DE SENSOR";
-            } else {
-                appData.style.display = 'flex'; errorCard.style.display = 'none';
-                document.getElementById('temp').innerText = d.temperatura.toFixed(1) + "°C";
-                document.getElementById('hum').innerText = d.humedad.toFixed(0) + "%";
-            }
+            datosActuales = s.val();
+            comprobarEstado(); 
         });
+
+        // EL VIGILANTE: Este reloj de JavaScript comprueba la pantalla CADA SEGUNDO,
+        // sin importar si el Arduino se ha desenchufado y Firebase está mudo.
+        setInterval(comprobarEstado, 1000);
+
+        function comprobarEstado() {
+            if (!datosActuales) return;
+
+            const appData = document.getElementById('app-data');
+            const errorCard = document.getElementById('error-card');
+            const errorText = document.getElementById('error-text');
+            
+            const ahoraUTC = Math.floor(Date.now() / 1000);
+            
+            // Corregimos el desfase: el Arduino manda la hora con +2 horas (7200 segundos)
+            const latidoCorregido = datosActuales.latido - 7200;
+
+            // Si ha pasado más de 75 segundos desde el último latido corregido...
+            if (!datosActuales.latido || (ahoraUTC - latidoCorregido > 75)) {
+                appData.style.display = 'none'; 
+                errorCard.style.display = 'block'; 
+                errorText.innerText = "PLACA FUERA DE LÍNEA";
+            } else if (datosActuales.temperatura <= -900) {
+                appData.style.display = 'none'; 
+                errorCard.style.display = 'block'; 
+                errorText.innerText = "ERROR DE SENSOR";
+            } else {
+                appData.style.display = 'flex'; 
+                errorCard.style.display = 'none';
+                document.getElementById('temp').innerText = datosActuales.temperatura.toFixed(1) + "°C";
+                document.getElementById('hum').innerText = datosActuales.humedad.toFixed(0) + "%";
+            }
+        }
 
         // --- 4. HISTORIAL (EL TRUCO DEL REPARTO EQUITATIVO) ---
         db.ref('historial').limitToLast(288).on('value', snapshot => {
