@@ -211,23 +211,31 @@
 
             const labels = [], temps = [], hums = [];
             
-            // Convertimos a array y recorremos
+            // 1. Calculamos el límite temporal (hace exactamente 24 horas)
+            const limite24h = Date.now() - (24 * 60 * 60 * 1000);
+            
             Object.values(data).forEach(p => {
-                temps.push(p.t);
-                hums.push(p.h);
-                
-                // Creamos la etiqueta de hora para CADA punto
-                const d = new Date(p.ts);
-                const horaStr = d.getHours().toString().padStart(2, '0') + ":" + d.getMinutes().toString().padStart(2, '0');
-                labels.push(horaStr);
+                // 2. Filtramos: Solo dibujamos el punto si es más reciente que hace 24h
+                if (p.ts >= limite24h) {
+                    temps.push(p.t);
+                    hums.push(p.h);
+                    
+                    // 3. Extraemos todos los datos de la fecha
+                    const d = new Date(p.ts);
+                    const dia = d.getDate().toString().padStart(2, '0');
+                    const mes = (d.getMonth() + 1).toString().padStart(2, '0');
+                    const hora = d.getHours().toString().padStart(2, '0');
+                    const min = d.getMinutes().toString().padStart(2, '0');
+                    
+                    // 4. Creamos una etiqueta completa: "DD/MM HH:MM"
+                    labels.push(`${dia}/${mes} ${hora}:${min}`);
+                }
             });
 
             chart.data.labels = labels;
             chart.data.datasets[0].data = temps;
             chart.data.datasets[1].data = hums;
             
-            // Chart.js se encarga de repartir estas etiquetas 
-            // gracias a 'maxTicksLimit' y 'autoSkip'
             chart.update('none');
         });
 
