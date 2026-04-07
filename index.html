@@ -9,6 +9,7 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
     
     <style>
         :root {
@@ -120,6 +121,7 @@
         };
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
+        const auth = firebase.auth();
 
         // --- 2. CONFIGURACIÓN DE LA GRÁFICA ---
         const ctx = document.getElementById('graficaDual').getContext('2d');
@@ -151,6 +153,15 @@
             }
         });
 
+        // --- INICIO DE SESIÓN INVISIBLE ---
+        auth.signInAnonymously().catch((error) => {
+            console.error("Error de seguridad:", error);
+        });
+
+        // Solo leemos datos si Firebase nos aprueba el acceso
+        auth.onAuthStateChanged((user) => {
+            if (user) {
+    
         // --- 3. MONITOR EN TIEMPO REAL (EL VIGILANTE) ---
         let datosActuales = null;
 
@@ -218,6 +229,9 @@
             // Chart.js se encarga de repartir estas etiquetas 
             // gracias a 'maxTicksLimit' y 'autoSkip'
             chart.update('none');
+        });
+
+            }
         });
     </script>
 </body>
