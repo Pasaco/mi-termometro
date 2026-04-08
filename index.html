@@ -3,22 +3,20 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>Termómetro Pro v6.0</title>
+    <title>Termómetro Pro v6.1</title>
     
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
     
     <style>
         :root {
-            --bg: #121212;
-            --card-bg: #1e1e1e;
-            --red: #ff6b6b;
-            --teal: #1abc9c;
-            --text-main: #ffffff;
-            --text-dim: #666;
+            --bg: #121212; --card-bg: #1e1e1e;
+            --red: #ff6b6b; --teal: #1abc9c;
+            --text-main: #ffffff; --text-dim: #666;
         }
 
         body { 
@@ -45,7 +43,6 @@
         .value { font-size: 2.3em; font-weight: 800; margin-top: 5px; }
         .label { color: var(--text-dim); font-size: 0.7em; text-transform: uppercase; letter-spacing: 2px; }
 
-        /* CUADRO DE ERROR CORREGIDO */
         #error-card { 
             display: none; background: rgba(255, 107, 107, 0.05); 
             border: 2px solid var(--red); border-radius: 28px;
@@ -53,23 +50,29 @@
             text-align: center; box-sizing: border-box; 
         }
 
-        /* SECCIÓN GRÁFICA CON ALTURA CONTROLADA */
         .chart-section { 
             padding: 20px 15px 50px 15px; background: #0a0a0a; 
             display: flex; flex-direction: column; align-items: center; 
         }
 
         .chart-card { 
-            width: 100%; max-width: 450px; background: var(--card-bg);
+            width: 100%; max-width: 95%; background: var(--card-bg);
             border-radius: 28px; padding: 15px; box-sizing: border-box;
             border: 1px solid #333;
         }
 
-        /* Contenedor con altura fija para evitar el estiramiento */
+        /* MAGIA PARA EL SCROLL: Un envoltorio que permite arrastrar el dedo hacia los lados */
+        .scroll-wrapper {
+            width: 100%;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch; /* Deslizamiento suave en iOS */
+        }
+
+        /* La gráfica ahora tiene un ancho mínimo forzado. Si la pantalla es más pequeña, genera scroll */
         .chart-container {
             position: relative;
-            height: 300px; /* AQUÍ SE CONTROLA EL ALTO */
-            width: 100%;
+            height: 300px; 
+            min-width: 800px; /* <--- Esto hace que sea más ancha y reparta mejor las 24h */
         }
 
         .scroll-hint { 
@@ -103,9 +106,11 @@
 
     <div class="chart-section">
         <div class="chart-card">
-            <div class="label" style="text-align:center; margin-bottom:15px;">Evolución 24 Horas</div>
-            <div class="chart-container">
-                <canvas id="graficaDual"></canvas>
+            <div class="label" style="text-align:center; margin-bottom:15px;">Evolución 24 Horas (Desliza 👉)</div>
+            <div class="scroll-wrapper">
+                <div class="chart-container">
+                    <canvas id="graficaDual"></canvas>
+                </div>
             </div>
         </div>
     </div>
@@ -114,7 +119,6 @@
         const tg = window.Telegram.WebApp;
         tg.expand();
 
-        // --- 1. CONFIGURACIÓN FIREBASE ---
         const firebaseConfig = {
             apiKey: "AIzaSyAz2wvO_ryzMLmBp2p7UULY6Q8mQVh_o2Y",
             databaseURL: "https://temperatura-casa-fe2e1-default-rtdb.europe-west1.firebasedatabase.app"
@@ -123,122 +127,101 @@
         const db = firebase.database();
         const auth = firebase.auth();
 
-        // --- 2. CONFIGURACIÓN DE LA GRÁFICA ---
         const ctx = document.getElementById('graficaDual').getContext('2d');
         
         const chart = new Chart(ctx, {
             type: 'line',
-            data: { labels: [], datasets: [
-                { label: 'T', yAxisID: 'yT', borderColor: '#ff6b6b', data: [], borderWidth: 3, pointRadius: 0, fill: true, tension: 0.4, backgroundColor: 'rgba(255, 107, 107, 0.1)' },
-                { label: 'H', yAxisID: 'yH', borderColor: '#1abc9c', data: [], borderWidth: 3, pointRadius: 0, fill: true, tension: 0.4, backgroundColor: 'rgba(26, 188, 156, 0.1)' }
+            data: { datasets: [
+                { label: 'T', yAxisID: 'yT', borderColor: '#ff6b6b', data: [], borderWidth: 3, pointRadius: 0, fill: true, tension: 0.4, backgroundColor: 'rgba(255, 107, 107, 0.1)', spanGaps: false },
+                { label: 'H', yAxisID: 'yH', borderColor: '#1abc9c', data: [], borderWidth: 3, pointRadius: 0, fill: true, tension: 0.4, backgroundColor: 'rgba(26, 188, 156, 0.1)', spanGaps: false }
             ]},
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
                 scales: {
                     x: { 
-                        display: true,
+                        type: 'time', // <--- EJE DE TIEMPO REAL
+                        time: {
+                            unit: 'hour', // <--- LO OBLIGAMOS A DIBUJAR LAS 24 FRANJAS DE HORAS
+                            displayFormats: { hour: 'HH:mm' },
+                            stepSize: 1
+                        },
                         grid: { color: 'rgba(255,255,255,0.05)', drawBorder: false },
-                        ticks: { 
-                            color: '#666', 
-                            font: { size: 10 },
-                            maxTicksLimit: 6, // FUERZA a repartir solo unas pocas etiquetas de hora
-                            autoSkip: true    // Reparte el espacio disponible equitativamente
-                        }
+                        ticks: { color: '#666', font: { size: 10 } }
                     },
                     yT: { position: 'left', grid: { color: '#222' }, ticks: { color: '#ff6b6b' } },
                     yH: { position: 'right', grid: { display: false }, ticks: { color: '#1abc9c' } }
                 },
-                plugins: { legend: { display: false } }
+                plugins: { legend: { display: false }, tooltip: { mode: 'index', intersect: false } }
             }
         });
 
-        // --- INICIO DE SESIÓN INVISIBLE ---
-        auth.signInAnonymously().catch((error) => {
-            console.error("Error de seguridad:", error);
-        });
+        auth.signInAnonymously().catch((error) => { console.error("Error de seguridad:", error); });
 
-        // Solo leemos datos si Firebase nos aprueba el acceso
         auth.onAuthStateChanged((user) => {
             if (user) {
-    
-        // --- 3. MONITOR EN TIEMPO REAL (EL VIGILANTE) ---
-        let datosActuales = null;
+                let datosActuales = null;
 
-        // Cuando Firebase reciba datos nuevos, los guardamos y actualizamos la pantalla
-        db.ref('sensor').on('value', s => {
-            datosActuales = s.val();
-            comprobarEstado(); 
-        });
+                db.ref('sensor').on('value', s => {
+                    datosActuales = s.val();
+                    comprobarEstado(); 
+                });
 
-        // EL VIGILANTE: Este reloj de JavaScript comprueba la pantalla CADA SEGUNDO,
-        // sin importar si el Arduino se ha desenchufado y Firebase está mudo.
-        setInterval(comprobarEstado, 1000);
+                setInterval(comprobarEstado, 1000);
 
-        function comprobarEstado() {
-            if (!datosActuales) return;
+                function comprobarEstado() {
+                    if (!datosActuales) return;
+                    const appData = document.getElementById('app-data'), errorCard = document.getElementById('error-card'), errorText = document.getElementById('error-text');
+                    const ahoraUTC = Math.floor(Date.now() / 1000);
+                    const latidoCorregido = datosActuales.latido - 7200;
 
-            const appData = document.getElementById('app-data');
-            const errorCard = document.getElementById('error-card');
-            const errorText = document.getElementById('error-text');
-            
-            const ahoraUTC = Math.floor(Date.now() / 1000);
-            
-            // Corregimos el desfase: el Arduino manda la hora con +2 horas (7200 segundos)
-            const latidoCorregido = datosActuales.latido - 7200;
-
-            // Si ha pasado más de 75 segundos desde el último latido corregido...
-            if (!datosActuales.latido || (ahoraUTC - latidoCorregido > 75)) {
-                appData.style.display = 'none'; 
-                errorCard.style.display = 'block'; 
-                errorText.innerText = "PLACA FUERA DE LÍNEA";
-            } else if (datosActuales.temperatura <= -900) {
-                appData.style.display = 'none'; 
-                errorCard.style.display = 'block'; 
-                errorText.innerText = "ERROR DE SENSOR";
-            } else {
-                appData.style.display = 'flex'; 
-                errorCard.style.display = 'none';
-                document.getElementById('temp').innerText = datosActuales.temperatura.toFixed(1) + "°C";
-                document.getElementById('hum').innerText = datosActuales.humedad.toFixed(0) + "%";
-            }
-        }
-
-        // --- 4. HISTORIAL (EL TRUCO DEL REPARTO EQUITATIVO) ---
-        db.ref('historial').limitToLast(288).on('value', snapshot => {
-            const data = snapshot.val();
-            if (!data) return;
-
-            const labels = [], temps = [], hums = [];
-            
-            // 1. Calculamos el límite temporal (hace exactamente 24 horas)
-            const limite24h = Date.now() - (24 * 60 * 60 * 1000);
-            
-            Object.values(data).forEach(p => {
-                // 2. Filtramos: Solo dibujamos el punto si es más reciente que hace 24h
-                if (p.ts >= limite24h) {
-                    temps.push(p.t);
-                    hums.push(p.h);
-                    
-                    // 3. Extraemos todos los datos de la fecha
-                    const d = new Date(p.ts);
-                    const dia = d.getDate().toString().padStart(2, '0');
-                    const mes = (d.getMonth() + 1).toString().padStart(2, '0');
-                    const hora = d.getHours().toString().padStart(2, '0');
-                    const min = d.getMinutes().toString().padStart(2, '0');
-                    
-                    // 4. Creamos una etiqueta completa: "DD/MM HH:MM"
-                    labels.push(`${hora}:${min}`);
+                    if (!datosActuales.latido || (ahoraUTC - latidoCorregido > 75)) {
+                        appData.style.display = 'none'; errorCard.style.display = 'block'; errorText.innerText = "PLACA FUERA DE LÍNEA";
+                    } else if (datosActuales.temperatura <= -900) {
+                        appData.style.display = 'none'; errorCard.style.display = 'block'; errorText.innerText = "ERROR DE SENSOR";
+                    } else {
+                        appData.style.display = 'flex'; errorCard.style.display = 'none';
+                        document.getElementById('temp').innerText = datosActuales.temperatura.toFixed(1) + "°C";
+                        document.getElementById('hum').innerText = datosActuales.humedad.toFixed(0) + "%";
+                    }
                 }
-            });
 
-            chart.data.labels = labels;
-            chart.data.datasets[0].data = temps;
-            chart.data.datasets[1].data = hums;
-            
-            chart.update('none');
-        });
+                // --- 4. HISTORIAL CON CORTES DE LÍNEA EXACTOS ---
+                db.ref('historial').limitToLast(400).on('value', snapshot => {
+                    const data = snapshot.val();
+                    if (!data) return;
 
+                    const temps = [], hums = [];
+                    const limite24h = Date.now() - (24 * 60 * 60 * 1000);
+                    
+                    // Fijamos el ancho físico de la gráfica a exactamente las últimas 24h
+                    chart.options.scales.x.min = limite24h;
+                    chart.options.scales.x.max = Date.now();
+
+                    let tiempoAnterior = 0;
+
+                    Object.values(data).forEach(p => {
+                        if (p.ts >= limite24h) {
+                            
+                            // EL DETECTOR DE HUECOS: Si entre el punto anterior y este 
+                            // han pasado más de 10 minutos (600,000 milisegundos), metemos un corte nulo.
+                            if (tiempoAnterior > 0 && (p.ts - tiempoAnterior > 600000)) {
+                                temps.push({ x: p.ts - 1, y: null });
+                                hums.push({ x: p.ts - 1, y: null });
+                            }
+
+                            // Los datos ya no son textos, son coordenadas de tiempo exactas (X, Y)
+                            temps.push({ x: p.ts, y: p.t });
+                            hums.push({ x: p.ts, y: p.h });
+                            
+                            tiempoAnterior = p.ts;
+                        }
+                    });
+
+                    chart.data.datasets[0].data = temps;
+                    chart.data.datasets[1].data = hums;
+                    chart.update('none');
+                });
             }
         });
     </script>
