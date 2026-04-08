@@ -41,7 +41,7 @@
         .card-temp { border-bottom: 4px solid var(--red); }
         .card-hum { border-bottom: 4px solid var(--teal); }
         .value { font-size: 2.3em; font-weight: 800; margin-top: 5px; }
-        .label { color: var(--text-dim); font-size: 0.7em; text-transform: uppercase; letter-spacing: 2px; }
+        .label { color: var(--text-main); font-size: 1em; font-weight: 600; text-transform: uppercase; letter-spacing: 2px; }
 
         #error-card { 
             display: none; background: rgba(255, 107, 107, 0.05); 
@@ -87,6 +87,7 @@
             font-weight: bold;
         }
         @keyframes bounce { 0%, 100% {transform: translateY(0);} 50% {transform: translateY(-10px);} }
+        
         /* ESTILOS DE LA NUEVA TARJETA */
         .extra-card {
             width: 90%;
@@ -104,7 +105,23 @@
             align-items: center;
         }
         .minmax-box .value {
-            font-size: 1.8em; /* Un poco más pequeños que los datos en vivo */
+            font-size: 2em; /* Un poco más pequeños que los datos en vivo */
+        }
+        /* ESTILO PARA LAS HORAS DE MÁX/MÍN */
+        .time-label {
+            font-size: 0.75em;
+            color: #888;
+            margin-top: 2px;
+            font-family: monospace; /* El formato "código" queda genial para las horas */
+        }
+        
+        /* NUEVO ESTILO: Hora y Minuto más grandes */
+        .time-label .hour-val {
+            font-size: 1.5em; 
+            color: #aaa;
+        }
+        .time-label .min-val {
+            font-size: 1.2em; /* <-- AÑADIDO: El tamaño de los minutos */
         }
     </style>
 </head>
@@ -120,15 +137,18 @@
                 <div class="label">Humedad</div>
                 <div id="hum" class="value" style="color: var(--teal)">--%</div>
             </div>
-            </div>
-            <div class="card extra-card" id="minmax-card">
+        </div>
+        
+        <div class="card extra-card" id="minmax-card">
             <div class="minmax-box">
                 <div class="label">Máxima 24h</div>
                 <div id="temp-max" class="value" style="color: var(--red)">--°C</div>
+                <div id="time-max" class="time-label"><span class="hour-val">--</span>:<span class="min-val">--</span></div> 
             </div>
             <div class="minmax-box">
                 <div class="label">Mínima 24h</div>
-                <div id="temp-min" class="value" style="color: #0070b8">--°C</div> </div>
+                <div id="temp-min" class="value" style="color: #0070b8">--°C</div> 
+                <div id="time-min" class="time-label"><span class="hour-val">--</span>:<span class="min-val">--</span></div> 
             </div>
         </div>
 
@@ -235,16 +255,16 @@
 
                     let tiempoAnterior = 0;
                     
-                    // NUEVO: Variables para los récords
-                    let maxT = -999;
-                    let minT = 999;
+                    // Variables para guardar también la fecha exacta
+                    let maxT = -999; let maxTime = 0;
+                    let minT = 999;  let minTime = 0;
 
                     Object.values(data).forEach(p => {
                         if (p.ts >= limite24h) {
                             
-                            // NUEVO: Calculamos la máxima y mínima en tiempo real
-                            if (p.t > maxT) maxT = p.t;
-                            if (p.t < minT) minT = p.t;
+                            // Si encontramos un récord, guardamos la temperatura Y LA HORA (p.ts)
+                            if (p.t > maxT) { maxT = p.t; maxTime = p.ts; }
+                            if (p.t < minT) { minT = p.t; minTime = p.ts; }
 
                             if (tiempoAnterior > 0 && (p.ts - tiempoAnterior > 600000)) {
                                 temps.push({ x: p.ts - 1, y: null });
@@ -258,11 +278,23 @@
                         }
                     });
 
-                    // NUEVO: Mostramos los récords en las tarjetas
-                    if (maxT !== -999) document.getElementById('temp-max').innerText = maxT.toFixed(1) + "°C";
-                    if (minT !== 999) document.getElementById('temp-min').innerText = minT.toFixed(1) + "°C";
+                    // Formateamos las horas y las mandamos a la pantalla
+                    const timeMaxElem = document.getElementById('time-max');
+                    const timeMinElem = document.getElementById('time-min');
 
-                    // (Aquí sigue tu código normal)
+                    if (maxT !== -999) {
+                        document.getElementById('temp-max').innerText = maxT.toFixed(1) + "°C";
+                        const dMax = new Date(maxTime);
+                        timeMaxElem.querySelector('.hour-val').innerText = dMax.getHours().toString().padStart(2, '0');
+                        timeMaxElem.querySelector('.min-val').innerText = dMax.getMinutes().toString().padStart(2, '0');
+                    }
+                    if (minT !== 999) {
+                        document.getElementById('temp-min').innerText = minT.toFixed(1) + "°C";
+                        const dMin = new Date(minTime);
+                        timeMinElem.querySelector('.hour-val').innerText = dMin.getHours().toString().padStart(2, '0');
+                        timeMinElem.querySelector('.min-val').innerText = dMin.getMinutes().toString().padStart(2, '0');
+                    }
+
                     chart.data.datasets[0].data = temps;
                     chart.data.datasets[1].data = hums;
                     chart.update('none');
