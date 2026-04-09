@@ -26,7 +26,7 @@
         body { 
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
             background: var(--bg); color: var(--text-main); margin: 0; padding: 0; 
-            overscroll-behavior-y: none; /* Evita tirones raros al arrastrar en móviles */
+            overscroll-behavior-y: none; /* Evita tirones al arrastrar en móviles */
         }
 
         .hero-section { 
@@ -66,12 +66,8 @@
             border: 1px solid #333;
         }
 
-        /* Quitamos el overflow-x porque ahora el deslizamiento es interno en la gráfica */
-        .scroll-wrapper {
-            width: 100%;
-        }
+        .scroll-wrapper { width: 100%; }
 
-        /* Quitamos el min-width de 800px para que encaje en la pantalla y ancle los ejes */
         .chart-container {
             position: relative;
             height: 300px; 
@@ -106,23 +102,16 @@
             flex-direction: column;
             align-items: center;
         }
-        .minmax-box .value {
-            font-size: 2em; 
-        }
+        .minmax-box .value { font-size: 2em; }
+        
         .time-label {
             font-size: 0.75em;
             color: #888;
             margin-top: 2px;
             font-family: monospace; 
         }
-        
-        .time-label .hour-val {
-            font-size: 1.5em; 
-            color: #aaa;
-        }
-        .time-label .min-val {
-            font-size: 1.2em; 
-        }
+        .time-label .hour-val { font-size: 1.5em; color: #aaa; }
+        .time-label .min-val { font-size: 1.2em; }
     </style>
 </head>
 <body>
@@ -205,18 +194,45 @@
                         grid: { color: 'rgba(255,255,255,0.05)', drawBorder: false },
                         ticks: { color: '#666', font: { size: 10 } }
                     },
-                    yT: { position: 'left', grid: { color: '#222' }, ticks: { color: '#ff6b6b' } },
-                    yH: { position: 'right', grid: { display: false }, ticks: { color: '#1abc9c' } }
+                    yT: { 
+                        position: 'left', 
+                        grace: 1, // Margen para relajar la curva
+                        grid: { color: '#222' }, 
+                        ticks: { 
+                            color: '#ff6b6b',
+                            callback: function(value) { return value.toFixed(1); } // Limpia decimales
+                        } 
+                    },
+                    yH: { 
+                        position: 'right', 
+                        grace: 5, // Margen humedad
+                        grid: { display: false }, 
+                        ticks: { 
+                            color: '#1abc9c',
+                            callback: function(value) { return value.toFixed(0); } // Sin decimales
+                        } 
+                    }
                 },
                 plugins: { 
                     legend: { display: false }, 
-                    tooltip: { mode: 'index', intersect: false },
-                    // NUEVO: Activamos el arrastre interno
-                    zoom: {
-                        pan: {
-                            enabled: true,
-                            mode: 'x' // Solo se arrastra a los lados, no hacia arriba/abajo
+                    tooltip: { 
+                        mode: 'index', 
+                        intersect: false,
+                        callbacks: {
+                            title: function(context) {
+                                const d = new Date(context[0].parsed.x);
+                                return d.getHours().toString().padStart(2, '0') + ':' + d.getMinutes().toString().padStart(2, '0');
+                            },
+                            label: function(context) {
+                                if (context.parsed.y === null) return;
+                                return context.dataset.label === 'T' 
+                                    ? ' Temp: ' + context.parsed.y.toFixed(1) + '°C'
+                                    : ' Hum: ' + context.parsed.y.toFixed(0) + '%';
+                            }
                         }
+                    },
+                    zoom: {
+                        pan: { enabled: true, mode: 'x' }
                     }
                 }
             }
@@ -252,7 +268,6 @@
                     }
                 }
 
-                // --- 4. HISTORIAL ---
                 db.ref('historial').limitToLast(400).on('value', snapshot => {
                     const data = snapshot.val();
                     if (!data) return;
@@ -261,13 +276,11 @@
                     const ahora = Date.now();
                     const limite24h = ahora - (24 * 60 * 60 * 1000);
                     
-                    // La vista arranca mostrando las últimas 6 horas (para que esté estirada)
                     const vistaInicial = ahora - (6 * 60 * 60 * 1000); 
                     
                     chart.options.scales.x.min = vistaInicial;
                     chart.options.scales.x.max = ahora;
 
-                    // Ponemos límites invisibles para que no puedas arrastrar más allá de las 24h
                     chart.options.plugins.zoom.limits = {
                         x: { min: limite24h, max: ahora }
                     };
