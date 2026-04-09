@@ -10,6 +10,10 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+    
+    <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
+    
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
     
     <style>
@@ -22,6 +26,7 @@
         body { 
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
             background: var(--bg); color: var(--text-main); margin: 0; padding: 0; 
+            overscroll-behavior-y: none; /* Evita tirones raros al arrastrar en móviles */
         }
 
         .hero-section { 
@@ -61,26 +66,24 @@
             border: 1px solid #333;
         }
 
-        /* MAGIA PARA EL SCROLL: Un envoltorio que permite arrastrar el dedo hacia los lados */
+        /* Quitamos el overflow-x porque ahora el deslizamiento es interno en la gráfica */
         .scroll-wrapper {
             width: 100%;
-            overflow-x: auto;
-            -webkit-overflow-scrolling: touch; /* Deslizamiento suave en iOS */
         }
 
-        /* La gráfica ahora tiene un ancho mínimo forzado. Si la pantalla es más pequeña, genera scroll */
+        /* Quitamos el min-width de 800px para que encaje en la pantalla y ancle los ejes */
         .chart-container {
             position: relative;
             height: 300px; 
-            min-width: 800px; /* <--- Esto hace que sea más ancha y reparta mejor las 24h */
+            width: 100%; 
         }
 
         .scroll-hint { 
             position: absolute; 
             bottom: 30px; 
-            left: 0;                /* Anclado a la izquierda... */
-            width: 100%;            /* ...ocupando todo el ancho... */
-            text-align: center;     /* ...y forzando el texto al centro */
+            left: 0;                
+            width: 100%;            
+            text-align: center;     
             color: #444; 
             font-size: 0.7em; 
             animation: bounce 2s infinite; 
@@ -88,16 +91,15 @@
         }
         @keyframes bounce { 0%, 100% {transform: translateY(0);} 50% {transform: translateY(-10px);} }
         
-        /* ESTILOS DE LA NUEVA TARJETA */
         .extra-card {
             width: 90%;
             max-width: 420px;
-            margin-top: 15px; /* Separación con las de arriba */
+            margin-top: 15px; 
             flex: none;
             display: flex;
-            justify-content: space-around; /* Reparte el espacio a los lados */
+            justify-content: space-around; 
             padding: 15px 5px;
-            border-bottom: 4px solid #ffffff; /* Borde gris neutro */
+            border-bottom: 4px solid #ffffff; 
         }
         .minmax-box {
             display: flex;
@@ -105,23 +107,21 @@
             align-items: center;
         }
         .minmax-box .value {
-            font-size: 2em; /* Un poco más pequeños que los datos en vivo */
+            font-size: 2em; 
         }
-        /* ESTILO PARA LAS HORAS DE MÁX/MÍN */
         .time-label {
             font-size: 0.75em;
             color: #888;
             margin-top: 2px;
-            font-family: monospace; /* El formato "código" queda genial para las horas */
+            font-family: monospace; 
         }
         
-        /* NUEVO ESTILO: Hora y Minuto más grandes */
         .time-label .hour-val {
             font-size: 1.5em; 
             color: #aaa;
         }
         .time-label .min-val {
-            font-size: 1.2em; /* <-- AÑADIDO: El tamaño de los minutos */
+            font-size: 1.2em; 
         }
     </style>
 </head>
@@ -196,9 +196,9 @@
                 maintainAspectRatio: false,
                 scales: {
                     x: { 
-                        type: 'time', // <--- EJE DE TIEMPO REAL
+                        type: 'time', 
                         time: {
-                            unit: 'hour', // <--- LO OBLIGAMOS A DIBUJAR LAS 24 FRANJAS DE HORAS
+                            unit: 'hour', 
                             displayFormats: { hour: 'HH:mm' },
                             stepSize: 1
                         },
@@ -208,7 +208,17 @@
                     yT: { position: 'left', grid: { color: '#222' }, ticks: { color: '#ff6b6b' } },
                     yH: { position: 'right', grid: { display: false }, ticks: { color: '#1abc9c' } }
                 },
-                plugins: { legend: { display: false }, tooltip: { mode: 'index', intersect: false } }
+                plugins: { 
+                    legend: { display: false }, 
+                    tooltip: { mode: 'index', intersect: false },
+                    // NUEVO: Activamos el arrastre interno
+                    zoom: {
+                        pan: {
+                            enabled: true,
+                            mode: 'x' // Solo se arrastra a los lados, no hacia arriba/abajo
+                        }
+                    }
+                }
             }
         });
 
@@ -242,27 +252,34 @@
                     }
                 }
 
-                // --- 4. HISTORIAL CON MÁXIMAS Y MÍNIMAS ---
+                // --- 4. HISTORIAL ---
                 db.ref('historial').limitToLast(400).on('value', snapshot => {
                     const data = snapshot.val();
                     if (!data) return;
 
                     const temps = [], hums = [];
-                    const limite24h = Date.now() - (24 * 60 * 60 * 1000);
+                    const ahora = Date.now();
+                    const limite24h = ahora - (24 * 60 * 60 * 1000);
                     
-                    chart.options.scales.x.min = limite24h;
-                    chart.options.scales.x.max = Date.now();
+                    // La vista arranca mostrando las últimas 6 horas (para que esté estirada)
+                    const vistaInicial = ahora - (6 * 60 * 60 * 1000); 
+                    
+                    chart.options.scales.x.min = vistaInicial;
+                    chart.options.scales.x.max = ahora;
+
+                    // Ponemos límites invisibles para que no puedas arrastrar más allá de las 24h
+                    chart.options.plugins.zoom.limits = {
+                        x: { min: limite24h, max: ahora }
+                    };
 
                     let tiempoAnterior = 0;
                     
-                    // Variables para guardar también la fecha exacta
                     let maxT = -999; let maxTime = 0;
                     let minT = 999;  let minTime = 0;
 
                     Object.values(data).forEach(p => {
                         if (p.ts >= limite24h) {
                             
-                            // Si encontramos un récord, guardamos la temperatura Y LA HORA (p.ts)
                             if (p.t > maxT) { maxT = p.t; maxTime = p.ts; }
                             if (p.t < minT) { minT = p.t; minTime = p.ts; }
 
@@ -278,7 +295,6 @@
                         }
                     });
 
-                    // Formateamos las horas y las mandamos a la pantalla
                     const timeMaxElem = document.getElementById('time-max');
                     const timeMinElem = document.getElementById('time-min');
 
