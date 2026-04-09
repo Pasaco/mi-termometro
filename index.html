@@ -26,7 +26,7 @@
         body { 
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
             background: var(--bg); color: var(--text-main); margin: 0; padding: 0; 
-            overscroll-behavior-y: none; /* Evita tirones al arrastrar en móviles */
+            overscroll-behavior-y: none; 
         }
 
         .hero-section { 
@@ -110,8 +110,9 @@
             margin-top: 2px;
             font-family: monospace; 
         }
-        .time-label .hour-val { font-size: 1.5em; color: #aaa; }
-        .time-label .min-val { font-size: 1.2em; }
+        /* Ajuste de tamaño de horas para que no sean tan invasivas en PC */
+        .time-label .hour-val { font-size: 1.25em; color: #aaa; }
+        .time-label .min-val { font-size: 1em; }
     </style>
 </head>
 <body>
@@ -196,20 +197,18 @@
                     },
                     yT: { 
                         position: 'left', 
-                        grace: 1, // Margen para relajar la curva
                         grid: { color: '#222' }, 
                         ticks: { 
                             color: '#ff6b6b',
-                            callback: function(value) { return value.toFixed(1); } // Limpia decimales
+                            callback: function(value) { return value.toFixed(1); }
                         } 
                     },
                     yH: { 
                         position: 'right', 
-                        grace: 5, // Margen humedad
                         grid: { display: false }, 
                         ticks: { 
                             color: '#1abc9c',
-                            callback: function(value) { return value.toFixed(0); } // Sin decimales
+                            callback: function(value) { return value.toFixed(0); }
                         } 
                     }
                 },
@@ -276,7 +275,11 @@
                     const ahora = Date.now();
                     const limite24h = ahora - (24 * 60 * 60 * 1000);
                     
-                    const vistaInicial = ahora - (6 * 60 * 60 * 1000); 
+                    // --- MAGIA 1: DETECCIÓN DE PANTALLA ---
+                    // Si la pantalla es pequeña (móvil), mostramos 6 horas. Si es grande (PC), mostramos 24 horas.
+                    const esMovil = window.innerWidth <= 768;
+                    const horasVista = esMovil ? 6 : 24;
+                    const vistaInicial = ahora - (horasVista * 60 * 60 * 1000); 
                     
                     chart.options.scales.x.min = vistaInicial;
                     chart.options.scales.x.max = ahora;
@@ -289,12 +292,19 @@
                     
                     let maxT = -999; let maxTime = 0;
                     let minT = 999;  let minTime = 0;
+                    
+                    // Variables para anclar la gráfica de humedad también
+                    let maxH = -999; 
+                    let minH = 999;
 
                     Object.values(data).forEach(p => {
                         if (p.ts >= limite24h) {
                             
                             if (p.t > maxT) { maxT = p.t; maxTime = p.ts; }
                             if (p.t < minT) { minT = p.t; minTime = p.ts; }
+                            
+                            if (p.h > maxH) { maxH = p.h; }
+                            if (p.h < minH) { minH = p.h; }
 
                             if (tiempoAnterior > 0 && (p.ts - tiempoAnterior > 600000)) {
                                 temps.push({ x: p.ts - 1, y: null });
@@ -307,6 +317,17 @@
                             tiempoAnterior = p.ts;
                         }
                     });
+                    
+                    // --- MAGIA 2: BLOQUEO DE ALTURA (EJES Y) ---
+                    // Fijamos los límites verticales basados en el registro absoluto de las 24 horas
+                    // para que no haya efecto "terremoto" al hacer scroll
+                    if (maxT !== -999) {
+                        chart.options.scales.yT.min = Math.floor(minT) - 1; // 1 grado de margen por abajo
+                        chart.options.scales.yT.max = Math.ceil(maxT) + 1;  // 1 grado de margen por arriba
+                        
+                        chart.options.scales.yH.min = Math.floor(minH) - 5; // 5% de margen por abajo
+                        chart.options.scales.yH.max = Math.ceil(maxH) + 5;  // 5% de margen por arriba
+                    }
 
                     const timeMaxElem = document.getElementById('time-max');
                     const timeMinElem = document.getElementById('time-min');
